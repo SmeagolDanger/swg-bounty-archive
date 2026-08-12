@@ -12,6 +12,7 @@ Data originates from [SWG Legends](https://swglegends.com/). This project is not
 - Rolling public bounty aggregate and every recent encounter observed by the collector.
 - Immutable changed-state snapshots, stable participant IDs, deterministic encounter fingerprints, database uniqueness constraints, revisions for fixed historical rows, and schema-change alerts.
 - Resumable public-history backfill, conservative polling worker, retry/backoff, timeouts, rate-limit handling, graceful shutdown, heartbeat health check, reconciliation, and diagnostics.
+- Optional Better Stack observability through low-volume structured JSON logs, failure-isolated collector heartbeats, typed schema diffs, and external health monitoring.
 - Dashboard, encounter search/filter/pagination, leaderboards, hunter comparison, rivalry intelligence and timelines, guild competition and current-roster analytics, player/guild/city dossiers, charts, global trigram search, public raw-response search, protected ingestion console, and raw payload viewer.
 - Unit tests plus a PostgreSQL integration test that imports the same fixture 100 times concurrently.
 - Docker Compose, migration runner, backup/restore/verification scripts, and no proprietary service dependency.
@@ -60,6 +61,8 @@ docker compose ps
 Open <http://localhost:3017> (or `APP_PORT`). The independent worker performs an initial collection and then polls at the configured interval. `/admin/ingestion` uses HTTP Basic authentication and returns 503 until both admin environment variables are set.
 
 All public sources are polled on one synchronized five-minute start-to-start cadence by default. The worker mirrors its active cadence into the source schedule records shown by the operations console.
+
+PostgreSQL remains the authoritative audit store. Optional external monitoring receives compact operational events only—never raw SWG payloads or secrets. See [docs/monitoring.md](docs/monitoring.md) for Better Stack log shipping, heartbeat setup, alert thresholds, safe testing, and the schema-change investigation runbook.
 
 To see logs:
 
@@ -118,6 +121,10 @@ See [.env.example](.env.example). Important controls:
 - `PUBLIC_API_RATE_LIMIT_PER_MINUTE`: per-process public API limit.
 - `APP_TIMEZONE`: server-rendered display timezone; storage is UTC `timestamptz`.
 - `BACKUP_DIR` / `BACKUP_RETENTION_DAYS`: backup path and optional retention. Zero keeps backups forever.
+- `BETTERSTACK_HEARTBEAT_URL`: optional secret collector heartbeat URL; blank disables external heartbeats.
+- `BETTERSTACK_HEARTBEAT_TIMEOUT_MS`: short failure-isolation timeout, default 3000 ms.
+- `BETTERSTACK_SOURCE_TOKEN` / `BETTERSTACK_INGESTING_HOST`: optional host log-shipper values; the application does not consume them.
+- `HEALTH_WORKER_STALE_SECONDS`: public health staleness threshold, default 900 seconds.
 
 No real credentials belong in source control.
 
@@ -162,6 +169,7 @@ Applied migrations are checksum-protected. Editing an already-applied migration 
 - Admin returns 503: configure `ADMIN_USERNAME` and a bcrypt `ADMIN_PASSWORD_HASH`.
 - Dashboard is empty: inspect worker logs, run `npm run ingest:once`, then check the protected operations console.
 - Schema-change warning: compare the linked raw payload with the prior signature and update the Zod parser without deleting raw history.
+- Better Stack unavailable: ingestion continues; inspect local Docker JSON logs and PostgreSQL operations events while the shipper or heartbeat service recovers.
 - Partial run: transient endpoint failures are isolated and retained; the next idempotent cycle retries safely.
 - Encounter gaps after downtime: the upstream public response has only 12 recent rows, so older missed events cannot be recovered from the discovered API.
 - Migration checksum error: restore the original migration file and express the change as a new migration.
