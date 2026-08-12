@@ -31,7 +31,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTH_WORKER_STALE_SECONDS: ${HEALTH_WORKER_STALE_SECONDS:-900}
       PUBLIC_API_RATE_LIMIT_PER_MINUTE: "120"
-      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
     depends_on:
       postgres:
         condition: service_healthy

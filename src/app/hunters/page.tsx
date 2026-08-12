@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getHunterDirectory } from "@/lib/data";
+import { LocalDateTime } from "@/components/local-date-time";
 
 export const metadata: Metadata = { title: "Hunter directory" };
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function HuntersPage({ searchParams }: { searchParams: Prom
       <button className="button" type="submit">Apply</button>
     </form>
     <div className="panel"><div className="panel-header"><h3>{number(data.total)} hunter profiles</h3><Link className="chip" href="/stats">Stat definitions →</Link></div>
-      <div className="data-scroll"><table className="data-table hunter-table"><thead><tr><th>Hunter</th><th>Total-kills board</th><th>Archive record</th><th>Win rate</th><th className="numeric">Credits</th><th>Last active</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td><Link className="entity-link" href={`/hunter/${row.id}`}><b>{row.current_name}</b></Link><small>{row.guild_id ? <Link href={`/guild/${row.guild_id}`}>{row.guild_abbreviation}</Link> : row.guild_abbreviation ?? row.city_name ?? "Unaligned"}</small></td><td>{row.total_kills_rank ? <>#{row.total_kills_rank}<small>{number(row.total_kills_score)} score</small></> : "—"}</td><td><span className="health-good">{number(row.wins)}W</span> <span className="health-bad">{number(row.losses)}L</span><small>{number(row.encounters)} events</small></td><td>{percent(row.win_rate)}</td><td className="numeric credits">{number(row.credits_claimed)} cr</td><td>{row.last_active_at ? new Date(row.last_active_at).toLocaleDateString("en-US", { dateStyle: "medium" }) : "Not observed"}</td></tr>)}</tbody></table></div>
+      <div className="data-scroll"><table className="data-table hunter-table"><thead><tr><th>Hunter</th><th>Total-kills board</th><th>Archive record</th><th>Win rate</th><th className="numeric">Credits</th><th>Last active</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td><Link className="entity-link" href={`/hunter/${row.id}`}><b>{row.current_name}</b></Link><small>{row.guild_id ? <Link href={`/guild/${row.guild_id}`}>{row.guild_abbreviation}</Link> : row.guild_abbreviation ?? row.city_name ?? "Unaligned"}</small></td><td>{row.total_kills_rank ? <>#{row.total_kills_rank}<small>{number(row.total_kills_score)} score</small></> : "—"}</td><td><span className="health-good">{number(row.wins)}W</span> <span className="health-bad">{number(row.losses)}L</span><small>{number(row.encounters)} events</small></td><td>{percent(row.win_rate)}</td><td className="numeric credits">{number(row.credits_claimed)} cr</td><td>{row.last_active_at ? <LocalDateTime value={row.last_active_at} kind="date"/> : "Not observed"}</td></tr>)}</tbody></table></div>
       {!data.rows.length && <div className="empty">No hunters match these filters.</div>}
       <div className="pager"><span>Page {page} of {pageCount}</span><span>{page > 1 && <Link className="button secondary" href={href(page - 1)}>Previous</Link>} {page < pageCount && <Link className="button secondary" href={href(page + 1)}>Next</Link>}</span></div>
     </div>
