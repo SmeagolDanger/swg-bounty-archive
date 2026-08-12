@@ -4,10 +4,11 @@ import { BOARD_LABELS, getParticipant } from "@/lib/data";
 import { EncounterList } from "./encounter-list";
 import { HistoryChart } from "./history-chart";
 import { HunterActivityChart } from "./hunter-activity-chart";
+import { LocalDateTime } from "./local-date-time";
 
 const integer = (value: unknown) => Number(value ?? 0).toLocaleString("en-US");
 const percent = (value: unknown) => value === null || value === undefined ? "—" : `${Math.round(Number(value) * 100)}%`;
-const date = (value: unknown) => value ? new Date(value as string).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: process.env.APP_TIMEZONE ?? "UTC" }) : "—";
+const date = (value: unknown) => value ? <LocalDateTime value={value as string | Date} kind="date"/> : "—";
 
 export async function Dossier({ id, type }: { id: string; type: "player" | "guild" | "city" }) {
   const data = await getParticipant(id, type);
@@ -58,6 +59,6 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
 
     <section className="section"><div className={type === "player" ? "" : "dashboard-grid"}>{type !== "player" && <div className="panel"><div className="panel-header"><h3>Rank history</h3><span className="chip">Source observations</span></div><HistoryChart rows={data.history}/></div>}<div className="panel"><div className="panel-header"><h3>Contract targets</h3><span className="chip">Hunter role only</span></div>{type === "player" && data.opponents.length ? data.opponents.map((row, index) => <div className="opponent-row" key={row.opponent}><span className="rank">{index + 1}</span><span><b>{row.opponent}</b><small>{integer(row.encounters)} contracts · {percent(row.win_rate)} claim rate</small></span><span className="record"><b className="health-good">{row.wins}W</b> <b className="health-bad">{row.losses}L</b></span></div>) : <div className="empty">{type === "player" ? "No hunter-role matchups are available from the archive." : "Contract targets are available only for hunter profiles."}</div>}</div></div></section>
     {type === "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Recent history</h3><span className="chip">Both encounter roles</span></div><EncounterList rows={data.encounters.slice(0, 25)}/></div></section>}
-    {type !== "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Leaderboard observation history</h3><span className="chip">{data.history.length} rows</span></div><div className="data-scroll"><table className="data-table"><thead><tr><th>Observed</th><th>Board</th><th>Period</th><th>Rank</th><th className="numeric">Raw score</th></tr></thead><tbody>{data.history.map((row, index) => <tr key={`${row.leaderboard_id}-${row.source_fetched_at}-${index}`}><td>{new Date(row.source_fetched_at).toLocaleString("en-US")}</td><td>{BOARD_LABELS[row.leaderboard_id] ?? row.leaderboard_id}</td><td>{date(row.starts_at)} – {date(row.ends_at)}</td><td>#{row.rank}</td><td className="numeric">{integer(row.score_raw)}</td></tr>)}</tbody></table></div></div></section>}
+    {type !== "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Leaderboard observation history</h3><span className="chip">{data.history.length} rows</span></div><div className="data-scroll"><table className="data-table"><thead><tr><th>Observed</th><th>Board</th><th>Period</th><th>Rank</th><th className="numeric">Raw score</th></tr></thead><tbody>{data.history.map((row, index) => <tr key={`${row.leaderboard_id}-${row.source_fetched_at}-${index}`}><td><LocalDateTime value={row.source_fetched_at}/></td><td>{BOARD_LABELS[row.leaderboard_id] ?? row.leaderboard_id}</td><td>{date(row.starts_at)} – {date(row.ends_at)}</td><td>#{row.rank}</td><td className="numeric">{integer(row.score_raw)}</td></tr>)}</tbody></table></div></div></section>}
   </div>;
 }

@@ -119,7 +119,7 @@ See [.env.example](.env.example). Important controls:
 - `INGESTION_TIMEOUT_MS` / `INGESTION_MAX_RETRIES`: request resilience.
 - `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH`: protected operations console.
 - `PUBLIC_API_RATE_LIMIT_PER_MINUTE`: per-process public API limit.
-- `APP_TIMEZONE`: server-rendered display timezone; storage is UTC `timestamptz`.
+- User-facing dates are stored as UTC `timestamptz` values and displayed in each visitor's browser timezone.
 - `BACKUP_DIR` / `BACKUP_RETENTION_DAYS`: backup path and optional retention. Zero keeps backups forever.
 - `BETTERSTACK_HEARTBEAT_URL`: optional secret collector heartbeat URL; blank disables external heartbeats.
 - `BETTERSTACK_HEARTBEAT_TIMEOUT_MS`: short failure-isolation timeout, default 3000 ms.

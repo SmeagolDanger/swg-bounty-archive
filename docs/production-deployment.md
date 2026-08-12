@@ -14,7 +14,7 @@ chmod 600 .env.production
 mkdir -p backups
 ```
 
-Edit `.env.production`. Set a long URL-safe `POSTGRES_PASSWORD`, put the same value in `DATABASE_URL`, and configure the timezone and admin credentials. Generate the bcrypt admin hash with the published image after pulling it:
+Edit `.env.production`. Set a long URL-safe `POSTGRES_PASSWORD`, put the same value in `DATABASE_URL`, and configure the admin credentials. User-facing dates automatically use each visitor's browser timezone. Generate the bcrypt admin hash with the published image after pulling it:
 
 ```bash
 docker pull ghcr.io/smeagoldanger/swg-bounty-archive:latest
