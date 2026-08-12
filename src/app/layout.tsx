@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "An independent, lossless historical archive of public SWG Legends Bounty Hunter activity.",
 };
 
-const nav = [["Network", "/"], ["Hunters", "/hunters"], ["Rivalries", "/rivalries"], ["Guilds", "/guilds"], ["Encounters", "/encounters"], ["Leaderboards", "/leaderboards"], ["Raw data", "/raw-data"], ["Compare", "/compare"]] as const;
+const nav = [["Encounters", "/"], ["Hunters", "/hunters"], ["Guilds", "/guilds"], ["Raw data", "/raw-data"], ["Compare", "/compare"]] as const;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
