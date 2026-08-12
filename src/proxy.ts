@@ -1,6 +1,15 @@
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
 
+function isBackgroundNavigation(request: NextRequest) {
+  const purpose = `${request.headers.get("purpose") ?? ""} ${request.headers.get("sec-purpose") ?? ""}`;
+  return purpose.includes("prefetch")
+    || request.headers.get("next-router-prefetch") === "1"
+    || request.headers.get("x-middleware-prefetch") === "1"
+    || request.headers.get("rsc") === "1"
+    || request.headers.get("accept")?.includes("text/x-component") === true;
+}
+
 export async function proxy(request: NextRequest) {
   const username = process.env.ADMIN_USERNAME;
   const passwordHash = process.env.ADMIN_PASSWORD_HASH;
@@ -15,7 +24,9 @@ export async function proxy(request: NextRequest) {
       if (separator > 0 && suppliedUser === username && await bcrypt.compare(password, passwordHash)) return NextResponse.next();
     } catch { /* malformed credentials */ }
   }
-  return new NextResponse("Authentication required", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="SWG Archive Admin", charset="UTF-8"' } });
+  const headers: Record<string, string> = { "Cache-Control": "no-store", Vary: "Authorization" };
+  if (!isBackgroundNavigation(request)) headers["WWW-Authenticate"] = 'Basic realm="SWG Archive Admin", charset="UTF-8"';
+  return new NextResponse("Authentication required", { status: 401, headers });
 }
 
 export const config = { matcher: ["/admin/:path*"] };
