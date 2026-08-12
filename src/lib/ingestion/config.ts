@@ -7,7 +7,7 @@ export const BOUNTY_BOARD_IDS = [
 
 export const PERIODS = ["CURRENT", "PREVIOUS_1", "PREVIOUS_2"] as const;
 export const SUBJECTS = ["player", "guild", "city"] as const;
-export const PARSER_VERSION = "1.2.0";
+export const PARSER_VERSION = "1.3.0";
 
 export function swgBaseUrl(): string {
   return (process.env.SWG_BASE_URL ?? "https://swglegends.com").replace(/\/$/, "");

@@ -107,6 +107,12 @@ curl -fsS http://127.0.0.1:3017/api/health
 
 The development worker should remain stopped. This prevents two independent collectors from writing divergent post-cutover archives.
 
+## Optional monitoring setup
+
+Outer Rim Ledger emits low-volume structured JSON logs to Docker stdout/stderr and can notify an optional Better Stack heartbeat after each completed poll. PostgreSQL remains the permanent source of truth, and monitoring failures never fail ingestion.
+
+Follow [monitoring.md](monitoring.md) to create the Docker log source, install the host Vector shipper, configure the five-minute heartbeat with a four-minute grace period, add an external `/api/health` monitor, and create noise-resistant alert rules. Leave every `BETTERSTACK_*` value blank to disable external telemetry.
+
 ## 5. Routine production updates
 
 The image workflow publishes `latest` from `main`, immutable `sha-<commit>` tags, and semantic-version tags. To update using the configured tag:

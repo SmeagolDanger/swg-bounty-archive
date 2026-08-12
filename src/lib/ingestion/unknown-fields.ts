@@ -19,20 +19,24 @@ function objectUnknown(value: unknown, group: keyof typeof allowed, path: string
 
 function arrayUnknown(value: unknown, group: keyof typeof allowed, path: string): string[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item, index) => objectUnknown(item, group, `${path}[${index}]`));
+  return value.flatMap((item) => objectUnknown(item, group, `${path}[]`));
 }
 
 export function findUnknownFields(processor: "catalog" | "leaderboard" | "wins" | "bounty", payload: unknown): string[] {
   const root = payload as Record<string, unknown>;
   if (!root || typeof root !== "object" || Array.isArray(root)) return ["$:non-object"];
-  if (processor === "catalog") return [...objectUnknown(root, "catalog", "$"), ...arrayUnknown(root.boards, "board", "$.boards")];
-  if (processor === "leaderboard") return [...objectUnknown(root, "leaderboard", "$"), ...arrayUnknown(root.entries, "entry", "$.entries")];
-  if (processor === "wins") return [...objectUnknown(root, "wins", "$"), ...arrayUnknown(root.cityWins, "win", "$.cityWins"), ...arrayUnknown(root.guildWins, "win", "$.guildWins")];
-  const summary = root.summary as Record<string, unknown> | undefined;
-  return [
-    ...objectUnknown(root, "bounty", "$"), ...objectUnknown(summary, "summary", "$.summary"),
-    ...objectUnknown(summary?.largestBounty, "encounter", "$.summary.largestBounty"),
-    ...arrayUnknown(root.hunters, "hunter", "$.hunters"), ...arrayUnknown(root.targets, "target", "$.targets"),
-    ...arrayUnknown(root.survivors, "target", "$.survivors"), ...arrayUnknown(root.recent, "encounter", "$.recent"),
-  ];
+  let fields: string[];
+  if (processor === "catalog") fields = [...objectUnknown(root, "catalog", "$"), ...arrayUnknown(root.boards, "board", "$.boards")];
+  else if (processor === "leaderboard") fields = [...objectUnknown(root, "leaderboard", "$"), ...arrayUnknown(root.entries, "entry", "$.entries")];
+  else if (processor === "wins") fields = [...objectUnknown(root, "wins", "$"), ...arrayUnknown(root.cityWins, "win", "$.cityWins"), ...arrayUnknown(root.guildWins, "win", "$.guildWins")];
+  else {
+    const summary = root.summary as Record<string, unknown> | undefined;
+    fields = [
+      ...objectUnknown(root, "bounty", "$"), ...objectUnknown(summary, "summary", "$.summary"),
+      ...objectUnknown(summary?.largestBounty, "encounter", "$.summary.largestBounty"),
+      ...arrayUnknown(root.hunters, "hunter", "$.hunters"), ...arrayUnknown(root.targets, "target", "$.targets"),
+      ...arrayUnknown(root.survivors, "target", "$.survivors"), ...arrayUnknown(root.recent, "encounter", "$.recent"),
+    ];
+  }
+  return [...new Set(fields)].sort();
 }

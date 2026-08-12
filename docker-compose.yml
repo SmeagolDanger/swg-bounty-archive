@@ -29,6 +29,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      HEALTH_WORKER_STALE_SECONDS: ${HEALTH_WORKER_STALE_SECONDS:-900}
       PUBLIC_API_RATE_LIMIT_PER_MINUTE: "120"
       APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
     depends_on:
@@ -54,7 +55,10 @@ services:
   worker:
     build: .
     command: npm run worker
-    environment: *app-env
+    environment:
+      <<: *app-env
+      BETTERSTACK_HEARTBEAT_URL: ${BETTERSTACK_HEARTBEAT_URL:-}
+      BETTERSTACK_HEARTBEAT_TIMEOUT_MS: ${BETTERSTACK_HEARTBEAT_TIMEOUT_MS:-3000}
     depends_on:
       migrate:
         condition: service_completed_successfully
