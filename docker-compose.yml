@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-swg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swg}
+      POSTGRES_DB: ${POSTGRES_DB:-swg_bounty}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"
+
+  migrate:
+    build: .
+    command: npm run db:migrate
+    environment: &app-env
+      DATABASE_URL: ${DATABASE_URL:-postgresql://swg:swg@postgres:5432/swg_bounty}
+      SWG_BASE_URL: https://swglegends.com
+      INGESTION_ENABLED: "true"
+      INGESTION_INTERVAL_SECONDS: "300"
+      INGESTION_CONCURRENCY: "2"
+      INGESTION_TIMEOUT_MS: "10000"
+      INGESTION_MAX_RETRIES: "3"
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_API_RATE_LIMIT_PER_MINUTE: "120"
+      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build: .
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_PORT:-3017}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: npm run worker
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/worker-healthy && find /tmp/worker-healthy -mmin -10 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  db-tools:
+    build: .
+    command: npm run backup
+    environment:
+      <<: *app-env
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-0}
+    volumes:
+      - ./backups/data:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+    restart: "no"
+
+volumes:
+  postgres_data:

@@ -1,0 +1,1 @@
+ALTER TABLE leaderboard_entries DROP CONSTRAINT IF EXISTS leaderboard_entries_snapshot_id_rank_key;

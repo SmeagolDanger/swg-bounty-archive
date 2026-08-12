@@ -1,0 +1,12 @@
+{
+  "windowDays": 14,
+  "summary": {"kills": 1057, "failures": 419, "encounters": 1476, "successRate": 0.7161246612466124, "creditsPaid": 102167201, "averageBounty": 96657.71144749291, "distinctHunters": 116, "distinctTargets": 611, "largestBounty": {"timestamp": "2026-08-02T21:51:33.000Z", "outcome": "KILL", "hunterName": "Todamas", "targetName": "Admin-Lokee", "credits": 5772233}},
+  "hunters": [{"rank": 1, "name": "Glashim Starrider", "kills": 127, "failures": 15, "encounters": 142, "successRate": 0.8943661971830986, "creditsEarned": 9552882}],
+  "targets": [{"rank": 1, "name": "Irozu", "timesKilled": 12, "timesSurvived": 4, "encounters": 16, "survivalRate": 0.25}],
+  "survivors": [{"rank": 1, "name": "Geez", "timesKilled": 1, "timesSurvived": 33, "encounters": 34, "survivalRate": 0.9705882352941176}],
+  "recent": [
+    {"timestamp": "2026-08-12T00:59:22.000Z", "outcome": "FAILED", "hunterName": "Glashim Starrider", "targetName": "Shepard EffectMass", "credits": 0},
+    {"timestamp": "2026-08-12T00:56:07.000Z", "outcome": "KILL", "hunterName": "Shepard EffectMass", "targetName": "Yigo Shiddo", "credits": 27065}
+  ],
+  "fetchedAt": "2026-08-12T01:10:00.844Z"
+}

@@ -1,0 +1,91 @@
+name: outer-rim-ledger
+
+x-app-image: &app-image
+  image: ${APP_IMAGE:-ghcr.io/smeagoldanger/swg-bounty-archive:latest}
+  pull_policy: always
+
+x-app-env: &app-env
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
+  SWG_BASE_URL: https://swglegends.com
+  INGESTION_ENABLED: "true"
+  INGESTION_INTERVAL_SECONDS: "300"
+  INGESTION_CONCURRENCY: ${INGESTION_CONCURRENCY:-2}
+  INGESTION_TIMEOUT_MS: ${INGESTION_TIMEOUT_MS:-10000}
+  INGESTION_MAX_RETRIES: ${INGESTION_MAX_RETRIES:-3}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PUBLIC_API_RATE_LIMIT_PER_MINUTE: ${PUBLIC_API_RATE_LIMIT_PER_MINUTE:-120}
+  APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+  BACKUP_DIR: /backups
+  BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-0}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-swg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-swg_bounty}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  migrate:
+    <<: *app-image
+    command: npm run db:migrate
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    <<: *app-image
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3017}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    <<: *app-image
+    command: npm run worker
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/worker-healthy && find /tmp/worker-healthy -mmin -10 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  db-tools:
+    <<: *app-image
+    command: npm run backup
+    environment: *app-env
+    volumes:
+      - ${BACKUP_PATH:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+    restart: "no"
+
+volumes:
+  postgres_data:

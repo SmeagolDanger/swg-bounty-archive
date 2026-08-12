@@ -1,0 +1,14 @@
+{
+  "id": "BOUNTY_HUNTER_GROUND_VALUE",
+  "period": "CURRENT",
+  "subject": "player",
+  "valueType": "CREDITS",
+  "totalScore": 304611,
+  "periodStartTime": 1786226405,
+  "periodEndTime": 1786831200,
+  "entries": [
+    {"rank": 1, "participantId": "757848019840", "name": "Evolon", "score": 72487, "scoreRaw": "7248700", "guildAbbreviation": "cOG", "faction": null, "planet": null, "cityName": "Mos Deadvlei"},
+    {"rank": 2, "participantId": "500127522976", "name": "Glashim Starrider", "score": 36394, "scoreRaw": "3639400", "guildAbbreviation": "SSBH", "faction": null, "planet": null, "cityName": "New Capitol City"}
+  ],
+  "fetchedAt": "2026-08-12T01:17:35.698Z"
+}

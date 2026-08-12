@@ -2,25 +2,52 @@
   "name": "swg-bounty-archive",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:stats": "tsx scripts/db-stats.ts",
+    "db:manifest": "tsx scripts/migration-manifest.ts",
+    "api:inspect": "tsx scripts/api-inspect.ts",
+    "ingest:once": "tsx scripts/ingest-once.ts",
+    "ingest:backfill": "tsx scripts/backfill.ts",
+    "ingest:reconcile": "tsx scripts/reconcile.ts",
+    "ingest:validate": "tsx scripts/validate-data.ts",
+    "worker": "tsx scripts/worker.ts",
+    "admin:hash-password": "tsx scripts/hash-password.ts",
+    "backup": "bash backups/backup.sh",
+    "restore": "bash backups/restore.sh",
+    "backup:verify": "bash backups/verify.sh"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.2",
     "next": "16.3.0",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.21.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.12",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
