@@ -52,7 +52,7 @@ Collection time is never part of source identity or substituted for event time. 
 ```bash
 cp .env.example .env
 # Make POSTGRES_PASSWORD and DATABASE_URL match, then set ADMIN_PASSWORD_HASH.
-npm run admin:hash-password -- 'choose-a-long-password'
+npm run --silent admin:hash-password -- --env 'choose-a-long-password'
 docker compose up --build -d
 docker compose ps
 ```
@@ -121,7 +121,7 @@ See [.env.example](.env.example). Important controls:
 
 No real credentials belong in source control.
 
-When pasting a bcrypt hash into `.env`, wrap it in single quotes so its `$` characters remain literal, for example `ADMIN_PASSWORD_HASH='$2b$12$…'`.
+The `--env` form prints a complete, paste-ready assignment. Keep its single quotes: Docker Compose otherwise treats bcrypt's `$` sections as variable references, warns that a variable is unset, and passes a damaged hash to the application. Raw hash-only output remains available with `npm run --silent admin:hash-password -- 'your password'`.
 
 ## Backfill limitations
 

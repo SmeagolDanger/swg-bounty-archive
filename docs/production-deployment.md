@@ -18,10 +18,10 @@ Edit `.env.production`. Set a long URL-safe `POSTGRES_PASSWORD`, put the same va
 
 ```bash
 docker pull ghcr.io/smeagoldanger/swg-bounty-archive:latest
-docker run --rm ghcr.io/smeagoldanger/swg-bounty-archive:latest npm run admin:hash-password -- 'your-long-admin-password'
+docker run --rm ghcr.io/smeagoldanger/swg-bounty-archive:latest npm run --silent admin:hash-password -- --env 'your-long-admin-password'
 ```
 
-Put the printed hash in `ADMIN_PASSWORD_HASH`. Single-quote bcrypt hashes in `.env.production` so `$` characters remain literal.
+Paste the complete printed `ADMIN_PASSWORD_HASH='…'` line into `.env.production`. Keep the single quotes so Docker Compose passes bcrypt's `$` characters literally.
 
 The default bind address is `127.0.0.1:3017`; place Caddy, nginx, or another TLS reverse proxy in front of it. Set `APP_BIND_ADDRESS=0.0.0.0` only when direct network exposure is intentional.
 
