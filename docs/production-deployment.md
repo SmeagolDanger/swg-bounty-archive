@@ -1,6 +1,6 @@
 # Production deployment and lossless data migration
 
-The production stack pulls the published multi-architecture image from GitHub Container Registry. It does not build source code on the VPS. PostgreSQL data lives in a named Docker volume, while portable backups live in a host directory.
+The production stack pulls the published Linux amd64 image from GitHub Container Registry. It does not build source code on the VPS. PostgreSQL data lives in a named Docker volume, while portable backups live in a host directory.
 
 ## 1. Prepare the VPS
 

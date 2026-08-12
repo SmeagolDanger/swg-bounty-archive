@@ -17,7 +17,7 @@ export default async function EncountersPage({ searchParams }: { searchParams: P
   };
   const data = await getEncounters(filters);
   const pageCount = Math.max(1, Math.ceil(data.total / data.pageSize));
-  const href = (next: number) => { const params = new URLSearchParams(); for (const [key,value] of Object.entries(query)) if (typeof value === "string" && key !== "page" && value) params.set(key,value); params.set("page",String(next)); return `/encounters?${params}`; };
+  const href = (next: number) => { const params = new URLSearchParams(); for (const [key,value] of Object.entries(query)) if (typeof value === "string" && key !== "page" && value) params.set(key,value); params.set("page",String(next)); return `?${params}`; };
   return <div className="shell">
     <header className="page-head"><span className="eyebrow">{"// Immutable event log"}</span><h1>Encounter archive</h1><p>Every publicly exposed claim and failed contract captured by the collector. Filters reflect only fields actually supplied by SWG Legends.</p></header>
     <form className="filters">
