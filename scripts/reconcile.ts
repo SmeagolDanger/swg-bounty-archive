@@ -2,7 +2,8 @@ import { pool } from "../src/lib/db/client";
 import { runIngestion } from "../src/lib/ingestion/pipeline";
 
 try {
-  const runId = await runIngestion("RECONCILE");
+  const result = await runIngestion("RECONCILE");
+  const runId = result.runId;
   const checks = await pool.query<{
     orphan_entries: string; duplicate_fingerprints: string; invalid_timestamps: string; duplicate_participants: string;
   }>(`SELECT

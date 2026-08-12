@@ -16,9 +16,9 @@ try {
       [jobKey, JSON.stringify({ period })],
     );
     try {
-      const runId = await runIngestion("BACKFILL", [period]);
-      await pool.query("UPDATE backfill_checkpoints SET status='SUCCEEDED',cursor=$2::jsonb,updated_at=now() WHERE job_key=$1", [jobKey, JSON.stringify({ period, runId, complete: true })]);
-      process.stdout.write(`Backfilled ${period}: ${runId}\n`);
+      const result = await runIngestion("BACKFILL", [period]);
+      await pool.query("UPDATE backfill_checkpoints SET status='SUCCEEDED',cursor=$2::jsonb,updated_at=now() WHERE job_key=$1", [jobKey, JSON.stringify({ period, runId: result.runId, complete: true })]);
+      process.stdout.write(`Backfilled ${period}: ${result.runId} (${result.status})\n`);
     } catch (error) {
       await pool.query("UPDATE backfill_checkpoints SET status='FAILED',last_error=$2,updated_at=now() WHERE job_key=$1", [jobKey, error instanceof Error ? error.message : String(error)]);
       throw error;

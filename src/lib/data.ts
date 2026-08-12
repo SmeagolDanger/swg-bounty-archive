@@ -531,7 +531,7 @@ export async function getParticipant(id: string, expectedType?: "player" | "guil
 }
 
 export async function getAdminHealth() {
-  const [summary, sources, runs, errors, quality, checkpoints, tables] = await Promise.all([
+  const [summary, sources, runs, errors, quality, checkpoints, tables, worker] = await Promise.all([
     pool.query(`SELECT max(response_received_at) FILTER(WHERE processing_status='PROCESSED') AS last_success,
       (SELECT count(*)::int FROM ingestion_errors WHERE resolved_at IS NULL) AS parser_errors,
       count(*) FILTER(WHERE processing_status='FAILED')::int AS historical_parser_errors,
@@ -550,6 +550,7 @@ export async function getAdminHealth() {
       (SELECT count(*)::int FROM leaderboard_entries) AS entries,
       (SELECT count(*)::int FROM data_revisions) AS revisions,
       (SELECT count(*)::int FROM schema_signatures) AS schema_signatures`),
+    pool.query("SELECT heartbeat_at,metadata FROM worker_heartbeats WHERE worker_key='primary'"),
   ]);
-  return { summary: summary.rows[0], sources: sources.rows, runs: runs.rows, errors: errors.rows, quality: quality.rows, checkpoints: checkpoints.rows, tables: tables.rows[0] };
+  return { summary: summary.rows[0], sources: sources.rows, runs: runs.rows, errors: errors.rows, quality: quality.rows, checkpoints: checkpoints.rows, tables: tables.rows[0], worker: worker.rows[0] ?? null };
 }
