@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getEncounters } from "@/lib/data";
+import { getEncounters, isTimeZone } from "@/lib/data";
 import { rateLimited } from "@/lib/rate-limit";
 
 const querySchema = z.object({
@@ -8,6 +8,7 @@ const querySchema = z.object({
   minCredits: z.coerce.number().int().nonnegative().optional(),
   maxCredits: z.coerce.number().int().nonnegative().optional(),
   from: z.iso.date().optional(), to: z.iso.date().optional(),
+  tz: z.string().max(64).refine(isTimeZone, "Unknown IANA timezone").optional(),
   page: z.coerce.number().int().positive().optional(), pageSize: z.coerce.number().int().min(10).max(100).optional(),
 });
 

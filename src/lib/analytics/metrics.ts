@@ -1,33 +1,3 @@
-export interface ActivityMetrics {
-  encounters: number;
-  kills: number;
-  failures: number;
-  credits: number;
-  successRate: number | null;
-  averageBounty: number | null;
-  uniqueOpponents: number;
-}
-
-export interface EncounterMetricInput {
-  outcome: "KILL" | "FAILED";
-  credits: number;
-  opponent: string;
-}
-
-export function deriveActivityMetrics(rows: EncounterMetricInput[]): ActivityMetrics {
-  const kills = rows.filter((row) => row.outcome === "KILL");
-  const credits = kills.reduce((sum, row) => sum + row.credits, 0);
-  return {
-    encounters: rows.length,
-    kills: kills.length,
-    failures: rows.length - kills.length,
-    credits,
-    successRate: rows.length ? kills.length / rows.length : null,
-    averageBounty: kills.length ? credits / kills.length : null,
-    uniqueOpponents: new Set(rows.map((row) => row.opponent.toLocaleLowerCase())).size,
-  };
-}
-
 export interface RivalryMetricInput {
   outcome: "KILL" | "FAILED";
   hunterName: string;
@@ -61,14 +31,4 @@ export function deriveRivalryMetrics(rows: RivalryMetricInput[], playerName: str
   }
   return { encounters: rows.length, playerWins, opponentWins, playerClaims, playerSurvivals, playerCredits, revengeKills,
     winRate: rows.length ? playerWins / rows.length : null };
-}
-
-export function rankDelta(current: number | null, previous: number | null): number | null {
-  if (current === null || previous === null) return null;
-  return previous - current;
-}
-
-export function scoreDelta(current: number | null, previous: number | null): number | null {
-  if (current === null || previous === null) return null;
-  return current - previous;
 }

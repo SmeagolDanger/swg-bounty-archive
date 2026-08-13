@@ -4,7 +4,10 @@ globalStore.__swgRateLimits = store;
 
 export function checkRateLimit(request: Request): { allowed: boolean; remaining: number; reset: number } {
   const limit = Math.max(10, Number(process.env.PUBLIC_API_RATE_LIMIT_PER_MINUTE ?? 120));
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip") ?? "local";
+  // The rightmost x-forwarded-for entry is the one appended by the trusted reverse
+  // proxy in front of this app; leftmost entries are client-supplied and spoofable.
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",").map((part) => part.trim()).filter(Boolean);
+  const ip = forwarded?.at(-1) ?? request.headers.get("x-real-ip") ?? "local";
   const now = Date.now();
   const existing = store.get(ip);
   const bucket = !existing || existing.reset <= now ? { count: 0, reset: now + 60_000 } : existing;

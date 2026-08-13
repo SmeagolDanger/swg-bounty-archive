@@ -1,19 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { EncounterList } from "@/components/encounter-list";
 import { LocalDateTime } from "@/components/local-date-time";
 import { getRivalryDetail } from "@/lib/data";
 
-export const metadata: Metadata = { title: "Rivalry file" };
 export const dynamic = "force-dynamic";
 const number = (value: unknown) => Number(value ?? 0).toLocaleString("en-US");
 
+const loadRivalry = cache(getRivalryDetail);
+const decodedOpponent = (value: string) => { try { return decodeURIComponent(value); } catch { return null; } };
+
+export async function generateMetadata({ params }: { params: Promise<{ hunterId: string; opponent: string }> }): Promise<Metadata> {
+  const { hunterId, opponent } = await params;
+  const opponentName = decodedOpponent(opponent);
+  const data = opponentName === null ? null : await loadRivalry(hunterId, opponentName);
+  return { title: data ? `${data.hunter.current_name} vs ${data.opponent.current_name} · Rivalry file` : "Rivalry file" };
+}
+
 export default async function RivalryPage({ params }: { params: Promise<{ hunterId: string; opponent: string }> }) {
   const { hunterId, opponent } = await params;
-  let opponentName = opponent;
-  try { opponentName = decodeURIComponent(opponent); } catch { notFound(); }
-  const data = await getRivalryDetail(hunterId, opponentName);
+  const opponentName = decodedOpponent(opponent);
+  if (opponentName === null) notFound();
+  const data = await loadRivalry(hunterId, opponentName);
   if (!data) notFound();
   return <div className="shell">
     <header className="page-head"><span className="eyebrow">{"// Head-to-head intelligence file"}</span><h1 className="rivalry-title"><Link href={`/hunter/${data.hunter.id}`}>{data.hunter.current_name}</Link><span>vs</span>{data.opponent.id ? <Link href={`/hunter/${data.opponent.id}`}>{data.opponent.current_name}</Link> : data.opponent.current_name}</h1><p>This record counts success from either role: a collected contract wins for the hunter; a failed contract wins for the target.</p></header>

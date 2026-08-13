@@ -7,6 +7,20 @@ export const isBoard = (value: string): value is (typeof BOUNTY_BOARD_IDS)[numbe
 export const isPeriod = (value: string): value is (typeof PERIODS)[number] => PERIODS.includes(value as (typeof PERIODS)[number]);
 export const isSubject = (value: string): value is (typeof SUBJECTS)[number] => SUBJECTS.includes(value as (typeof SUBJECTS)[number]);
 
+// Guards for values that reach SQL casts directly from URLs: reject instead of erroring the query.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (value: string) => UUID_PATTERN.test(value);
+const isoDate = (value: string | undefined) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) ? value : undefined;
+
+// Date filters are interpreted in the visitor's timezone so day boundaries match the
+// timestamps the UI displays. Only known IANA names ever reach AT TIME ZONE.
+let knownTimeZones: Set<string> | null = null;
+export function isTimeZone(value: string): boolean {
+  knownTimeZones ??= new Set(Intl.supportedValuesOf("timeZone"));
+  return knownTimeZones.has(value) || value === "UTC";
+}
+const timeZoneOf = (value: string | undefined) => value && isTimeZone(value) ? value : "UTC";
+
 export async function getDashboard() {
   const [stats, recent, top, activity, activeGroups, ingestion] = await Promise.all([
     pool.query(`SELECT
@@ -57,6 +71,7 @@ export interface EncounterFilters {
   maxCredits?: number;
   from?: string;
   to?: string;
+  tz?: string;
   page?: number;
   pageSize?: number;
 }
@@ -69,8 +84,11 @@ export async function getEncounters(filters: EncounterFilters) {
   if (filters.outcome === "KILL" || filters.outcome === "FAILED") conditions.push(`outcome=${bind(filters.outcome)}`);
   if (Number.isFinite(filters.minCredits)) conditions.push(`credits>=${bind(filters.minCredits)}`);
   if (Number.isFinite(filters.maxCredits)) conditions.push(`credits<=${bind(filters.maxCredits)}`);
-  if (filters.from) conditions.push(`event_at>=${bind(filters.from)}`);
-  if (filters.to) conditions.push(`event_at<(${bind(filters.to)}::date + interval '1 day')`);
+  const from = isoDate(filters.from);
+  const to = isoDate(filters.to);
+  const timeZone = timeZoneOf(filters.tz);
+  if (from) conditions.push(`event_at>=(${bind(from)}::date::timestamp AT TIME ZONE ${bind(timeZone)})`);
+  if (to) conditions.push(`event_at<((${bind(to)}::date + interval '1 day') AT TIME ZONE ${bind(timeZone)})`);
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? 25));
   const page = Math.max(1, filters.page ?? 1);
@@ -196,6 +214,7 @@ export interface RawDataFilters {
   status?: "PROCESSED" | "FAILED" | "HTTP_ERROR" | "RECEIVED";
   from?: string;
   to?: string;
+  tz?: string;
   page?: number;
   pageSize?: number;
 }
@@ -210,8 +229,11 @@ export async function getRawData(filters: RawDataFilters = {}) {
   }
   if (filters.source?.trim()) conditions.push(`s.source_key=${bind(filters.source.trim())}`);
   if (filters.status) conditions.push(`i.processing_status=${bind(filters.status)}`);
-  if (filters.from) conditions.push(`i.response_received_at>=${bind(filters.from)}`);
-  if (filters.to) conditions.push(`i.response_received_at<(${bind(filters.to)}::date+interval '1 day')`);
+  const from = isoDate(filters.from);
+  const to = isoDate(filters.to);
+  const timeZone = timeZoneOf(filters.tz);
+  if (from) conditions.push(`i.response_received_at>=(${bind(from)}::date::timestamp AT TIME ZONE ${bind(timeZone)})`);
+  if (to) conditions.push(`i.response_received_at<((${bind(to)}::date + interval '1 day') AT TIME ZONE ${bind(timeZone)})`);
   const where = `WHERE ${conditions.join(" AND ")}`;
   const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? 25));
   const page = Math.max(1, filters.page ?? 1);
@@ -296,12 +318,12 @@ export async function getRivalries(filters: RivalryFilters = {}) {
     ${where} ORDER BY ${order} LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
   const summary = await pool.query(`${rivalryCtes} SELECT count(*) FILTER(WHERE encounters>=2)::int AS rivalries,
     coalesce(max(encounters),0)::int AS most_encounters,coalesce(sum(revenge_kills),0)::int AS revenge_kills,
-    coalesce(max(last_event_at-first_event_at),interval '0') AS longest_span FROM rivalry_rows`);
+    coalesce(max(extract(epoch FROM last_event_at-first_event_at)) FILTER(WHERE encounters>=2),0)::float8 AS longest_span_seconds FROM rivalry_rows`);
   return { rows: rows.rows, total: count.rows[0].count as number, page, pageSize, summary: summary.rows[0] };
 }
 
 export async function getRivalryDetail(hunterId: string, opponentName: string) {
-  if (!opponentName.trim() || opponentName.length > 100) return null;
+  if (!isUuid(hunterId) || !opponentName.trim() || opponentName.length > 100) return null;
   const entity = await pool.query("SELECT * FROM participants WHERE id=$1 AND participant_type='player'", [hunterId]);
   if (!entity.rows[0]) return null;
   const hunter = entity.rows[0];
@@ -480,6 +502,7 @@ export async function searchEntities(q: string, limit = 20) {
 }
 
 export async function getParticipant(id: string, expectedType?: "player" | "guild" | "city") {
+  if (!isUuid(id)) return null;
   const entity = await pool.query(`SELECT p.*,guild.id AS guild_id FROM participants p
     LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='guild' AND lower(guild_abbreviation)=lower(nullif(p.guild_abbreviation,'')) ORDER BY last_seen_at DESC LIMIT 1) guild ON true
     WHERE p.id=$1 AND ($2::text IS NULL OR p.participant_type=$2)`, [id, expectedType ?? null]);

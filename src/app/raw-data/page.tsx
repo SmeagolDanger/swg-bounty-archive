@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getRawData } from "@/lib/data";
 import { LocalDateTime } from "@/components/local-date-time";
+import { TimezoneField } from "@/components/timezone-field";
 
 export const metadata: Metadata = { title: "Raw data search" };
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function RawDataPage({ searchParams }: { searchParams: Prom
   const query = await searchParams;
   const statusValue = one(query.status);
   const status = ["PROCESSED", "FAILED", "HTTP_ERROR", "RECEIVED"].includes(statusValue ?? "") ? statusValue as "PROCESSED" | "FAILED" | "HTTP_ERROR" | "RECEIVED" : undefined;
-  const filters = { q: one(query.q)?.slice(0, 160), source: one(query.source)?.slice(0, 80), status, from: one(query.from), to: one(query.to), page: Math.max(1, Number(one(query.page) ?? 1) || 1) };
+  const filters = { q: one(query.q)?.slice(0, 160), source: one(query.source)?.slice(0, 80), status, from: one(query.from), to: one(query.to), tz: one(query.tz), page: Math.max(1, Number(one(query.page) ?? 1) || 1) };
   const data = await getRawData(filters);
   const pageCount = Math.max(1, Math.ceil(data.total / data.pageSize));
   const href = (next: number) => { const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (typeof value === "string" && key !== "page" && value) params.set(key, value); params.set("page", String(next)); return `/raw-data?${params}`; };
@@ -24,8 +25,9 @@ export default async function RawDataPage({ searchParams }: { searchParams: Prom
       <input className="field wide" name="q" defaultValue={filters.q} placeholder="Search payload names, values, or keys"/>
       <select className="field" name="source" defaultValue={filters.source ?? ""}><option value="">Every source</option>{data.sources.map((source) => <option value={source.source_key} key={source.source_key}>{source.source_key} ({source.responses})</option>)}</select>
       <select className="field" name="status" defaultValue={filters.status ?? ""}><option value="">Any status</option><option value="PROCESSED">Processed</option><option value="FAILED">Failed</option><option value="HTTP_ERROR">HTTP error</option><option value="RECEIVED">Received</option></select>
-      <input className="field" name="from" type="date" defaultValue={filters.from}/><input className="field" name="to" type="date" defaultValue={filters.to}/>
+      <input className="field" name="from" type="date" defaultValue={filters.from} aria-label="From date" title="Interpreted in your local timezone"/><input className="field" name="to" type="date" defaultValue={filters.to} aria-label="To date" title="Interpreted in your local timezone"/>
       <button className="button" type="submit">Search source</button>
+      <TimezoneField/>
     </form>
     <div className="tabbar"><Link className={!filters.source ? "active" : ""} href="/raw-data">All responses</Link>{data.sources.map((source) => <Link key={source.source_key} className={filters.source === source.source_key ? "active" : ""} href={`/raw-data?source=${encodeURIComponent(source.source_key)}`}>{source.source_key} · {source.responses}</Link>)}</div>
     <div className="panel"><div className="panel-header"><h3>{data.total.toLocaleString("en-US")} source responses</h3><span className="chip">Newest first</span></div><div className="data-scroll"><table className="data-table raw-table mobile-cards"><thead><tr><th>Received</th><th>Source response</th><th>Status</th><th>Size</th><th>Verification</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td data-label="Received"><LocalDateTime value={row.response_received_at}/></td><td data-label="Source response" className="card-title"><Link className="entity-link" href={`/raw-data/${row.id}`}><b>{row.source_key}</b></Link><small>{row.endpoint}</small>{filters.q && <code className="raw-preview">{row.preview}</code>}</td><td data-label="Status"><span className={`status ${row.processing_status === "PROCESSED" ? "kill" : "error"}`}>{row.http_status} {row.processing_status}</span><small>{row.duration_ms} ms</small></td><td data-label="Size">{bytes(row.payload_bytes)}</td><td data-label="Verification"><code>{String(row.payload_hash ?? "unhashed").slice(0, 16)}…</code><small>parser {row.parser_version}</small></td></tr>)}</tbody></table></div>{!data.rows.length && <div className="empty">No raw responses match this search.</div>}<div className="pager"><span>Page {data.page} of {pageCount}</span><span>{data.page > 1 && <Link className="button secondary" href={href(data.page - 1)}>Previous</Link>} {data.page < pageCount && <Link className="button secondary" href={href(data.page + 1)}>Next</Link>}</span></div></div>

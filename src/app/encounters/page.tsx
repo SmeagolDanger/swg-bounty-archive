@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getEncounters } from "@/lib/data";
+import { siteUrl } from "@/lib/site";
 import { LocalDateTime } from "@/components/local-date-time";
+import { TimezoneField } from "@/components/timezone-field";
 
-export const metadata: Metadata = { title: "Encounter archive" };
+// The encounter archive is also served at "/"; point both at one canonical URL when configured.
+export const metadata: Metadata = { title: "Encounter archive", ...(siteUrl() ? { alternates: { canonical: "/" } } : {}) };
 export const dynamic = "force-dynamic";
 
 const one = (value: string | string[] | undefined) => typeof value === "string" ? value : undefined;
@@ -12,7 +15,7 @@ export default async function EncountersPage({ searchParams }: { searchParams: P
   const query = await searchParams;
   const page = Math.max(1, Number(one(query.page) ?? 1) || 1);
   const filters = {
-    q: one(query.q)?.slice(0,100), outcome: one(query.outcome), from: one(query.from), to: one(query.to), page,
+    q: one(query.q)?.slice(0,100), outcome: one(query.outcome), from: one(query.from), to: one(query.to), tz: one(query.tz), page,
     minCredits: one(query.minCredits) ? Number(one(query.minCredits)) : undefined,
     maxCredits: one(query.maxCredits) ? Number(one(query.maxCredits)) : undefined,
   };
@@ -27,7 +30,8 @@ export default async function EncountersPage({ searchParams }: { searchParams: P
       <input className="field" name="minCredits" type="number" min="0" defaultValue={one(query.minCredits)} placeholder="Min bounty"/>
       <input className="field" name="maxCredits" type="number" min="0" defaultValue={one(query.maxCredits)} placeholder="Max bounty"/>
       <button className="button" type="submit">Filter log</button>
-      <input className="field" name="from" type="date" defaultValue={filters.from}/><input className="field" name="to" type="date" defaultValue={filters.to}/>
+      <input className="field" name="from" type="date" defaultValue={filters.from} aria-label="From date" title="Interpreted in your local timezone"/><input className="field" name="to" type="date" defaultValue={filters.to} aria-label="To date" title="Interpreted in your local timezone"/>
+      <TimezoneField/>
     </form>
     <div className="panel"><div className="panel-header"><h3>{data.total.toLocaleString("en-US")} records</h3><span className="chip">Newest first</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Timestamp</th><th>Hunter</th><th>Outcome</th><th>Target</th><th className="numeric">Payout</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td data-label="Timestamp" className="card-title"><LocalDateTime value={row.event_at}/></td><td data-label="Hunter">{row.hunter_participant_id ? <Link className="entity-link" href={`/hunter/${row.hunter_participant_id}`}>{row.hunter_name}</Link> : row.hunter_name}</td><td data-label="Outcome"><span className={`status ${row.outcome.toLowerCase()}`}>{row.outcome === "KILL" ? "Collected" : "Failed"}</span></td><td data-label="Target">{row.target_participant_id ? <Link className="entity-link" href={`/hunter/${row.target_participant_id}`}>{row.target_name}</Link> : row.target_name}</td><td data-label="Payout" className="numeric credits">{row.outcome === "KILL" ? `${Number(row.credits).toLocaleString("en-US")} cr` : "—"}</td></tr>)}</tbody></table></div>
       {!data.rows.length && <div className="empty">No encounters match these filters.</div>}

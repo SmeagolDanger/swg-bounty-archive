@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { BOARD_LABELS, getParticipant } from "@/lib/data";
 import { EncounterList } from "./encounter-list";
 import { HistoryChart } from "./history-chart";
 import { HunterActivityChart } from "./hunter-activity-chart";
 import { LocalDateTime } from "./local-date-time";
 
+// Deduplicates the dossier query between generateMetadata and the page render.
+export const loadParticipant = cache(getParticipant);
+
 const integer = (value: unknown) => Number(value ?? 0).toLocaleString("en-US");
 const percent = (value: unknown) => value === null || value === undefined ? "—" : `${Math.round(Number(value) * 100)}%`;
 const date = (value: unknown) => value ? <LocalDateTime value={value as string | Date} kind="date"/> : "—";
 
 export async function Dossier({ id, type }: { id: string; type: "player" | "guild" | "city" }) {
-  const data = await getParticipant(id, type);
+  const data = await loadParticipant(id, type);
   if (!data) notFound();
   const latest = new Map<string, Record<string, unknown>>();
   for (const row of data.history) if (!latest.has(row.leaderboard_id)) latest.set(row.leaderboard_id, row);
@@ -19,6 +23,7 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
   const hunter = data.hunterSummary;
   const target = data.targetSummary;
   const guild = data.guildCompetition;
+  const rivalries = data.rivalries.filter((row) => Number(row.encounters) >= 2).slice(0, 10);
 
   const associationNotice = type === "player"
     ? "Encounter statistics use a case-insensitive exact-name match because the public encounter endpoint supplies no character IDs. They describe only the locally archived window, not the hunter’s lifetime career."
@@ -57,7 +62,9 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
       <section className="section"><div className="panel"><div className="panel-header"><h3>Current tracked roster</h3><span className="chip">{guild.roster.length} hunters</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Hunter</th><th>Archive record</th><th>Encounters</th><th className="numeric">Credits</th><th>Last active</th></tr></thead><tbody>{guild.roster.map((row) => <tr key={row.id}><td data-label="Hunter" className="card-title"><Link className="entity-link" href={`/hunter/${row.id}`}><b>{row.current_name}</b></Link><small>{row.city_name ?? "No current city"}</small></td><td data-label="Archive record"><span className="health-good">{row.wins}W</span> <span className="health-bad">{row.losses}L</span></td><td data-label="Encounters">{row.encounters}</td><td data-label="Credits" className="numeric credits">{integer(row.credits)} cr</td><td data-label="Last active">{date(row.last_active_at)}</td></tr>)}</tbody></table></div></div></section>
     </>}
 
-    <section className="section"><div className={type === "player" ? "" : "dashboard-grid"}>{type !== "player" && <div className="panel"><div className="panel-header"><h3>Rank history</h3><span className="chip">Source observations</span></div><HistoryChart rows={data.history}/></div>}<div className="panel"><div className="panel-header"><h3>Contract targets</h3><span className="chip">Hunter role only</span></div>{type === "player" && data.opponents.length ? data.opponents.map((row, index) => <div className="opponent-row" key={row.opponent}><span className="rank">{index + 1}</span><span><b>{row.opponent}</b><small>{integer(row.encounters)} contracts · {percent(row.win_rate)} claim rate</small></span><span className="record"><b className="health-good">{row.wins}W</b> <b className="health-bad">{row.losses}L</b></span></div>) : <div className="empty">{type === "player" ? "No hunter-role matchups are available from the archive." : "Contract targets are available only for hunter profiles."}</div>}</div></div></section>
+    <section className="section"><div className="dashboard-grid">{type !== "player" && <div className="panel"><div className="panel-header"><h3>Rank history</h3><span className="chip">Source observations</span></div><HistoryChart rows={data.history}/></div>}<div className="panel"><div className="panel-header"><h3>Contract targets</h3><span className="chip">Hunter role only</span></div>{type === "player" && data.opponents.length ? data.opponents.map((row, index) => <div className="opponent-row" key={row.opponent}><span className="rank">{index + 1}</span><span><b>{row.opponent}</b><small>{integer(row.encounters)} contracts · {percent(row.win_rate)} claim rate</small></span><span className="record"><b className="health-good">{row.wins}W</b> <b className="health-bad">{row.losses}L</b></span></div>) : <div className="empty">{type === "player" ? "No hunter-role matchups are available from the archive." : "Contract targets are available only for hunter profiles."}</div>}</div>
+      {type === "player" && <div className="panel"><div className="panel-header"><h3>Rivalry files</h3><span className="chip">Both encounter roles</span></div>{rivalries.length ? rivalries.map((row, index) => <div className="opponent-row" key={row.opponent_key}><span className="rank">{index + 1}</span><span><b><Link className="entity-link" href={`/rivalry/${data.participant.id}/${encodeURIComponent(row.opponent)}`}>{row.opponent}</Link></b><small>{integer(row.encounters)} encounters · {integer(row.revenge_kills)} revenge</small></span><span className="record"><b className="health-good">{row.wins}W</b> <b className="health-bad">{row.losses}L</b></span></div>) : <div className="empty">No repeat opponents are archived yet.</div>}</div>}
+    </div></section>
     {type === "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Recent history</h3><span className="chip">Both encounter roles</span></div><EncounterList rows={data.encounters.slice(0, 25)}/></div></section>}
     {type !== "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Leaderboard observation history</h3><span className="chip">{data.history.length} rows</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Observed</th><th>Board</th><th>Period</th><th>Rank</th><th className="numeric">Raw score</th></tr></thead><tbody>{data.history.map((row, index) => <tr key={`${row.leaderboard_id}-${row.source_fetched_at}-${index}`}><td data-label="Observed"><LocalDateTime value={row.source_fetched_at}/></td><td data-label="Board" className="card-title">{BOARD_LABELS[row.leaderboard_id] ?? row.leaderboard_id}</td><td data-label="Period">{date(row.starts_at)} – {date(row.ends_at)}</td><td data-label="Rank">#{row.rank}</td><td data-label="Raw score" className="numeric">{integer(row.score_raw)}</td></tr>)}</tbody></table></div></div></section>}
   </div>;

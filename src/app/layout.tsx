@@ -3,12 +3,15 @@ import type { Viewport } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GlobalSearch } from "@/components/global-search";
+import { MobileNavigation } from "@/components/mobile-nav";
+import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
 const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: siteUrl(),
   title: { default: "Outer Rim Ledger", template: "%s · Outer Rim Ledger" },
   description: "An independent, lossless historical archive of public SWG Legends Bounty Hunter activity.",
 };
@@ -30,13 +33,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <nav className="desktop-nav" aria-label="Primary navigation">{nav.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}</nav>
             <div className="desktop-search"><GlobalSearch /></div>
-            <details className="mobile-navigation">
+            <MobileNavigation>
               <summary><span className="menu-icon" aria-hidden="true"><i/><i/><i/></span><span>Menu</span></summary>
               <div className="mobile-menu">
                 <GlobalSearch />
                 <nav aria-label="Mobile navigation">{nav.map(([label, href]) => <Link key={href} href={href}>{label}<span aria-hidden="true">→</span></Link>)}</nav>
               </div>
-            </details>
+            </MobileNavigation>
           </div>
         </header>
         <main>{children}</main>
