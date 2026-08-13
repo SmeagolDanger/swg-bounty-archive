@@ -21,9 +21,9 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
     ["Unique targets", (hunter) => integer(hunter?.unique_targets)],
   ];
   return <div className="shell"><header className="page-head"><span className="eyebrow">{"// Side-by-side intelligence"}</span><h1>Hunter comparison</h1><p>Compare only observations actually present in the archive. Empty cells mean the source has not supplied that metric. Encounter rows count the hunter role only.</p></header><CompareBuilder initialIds={ids}/>
-    {rows.length>=2?<div className="panel data-scroll"><table className="data-table"><thead><tr><th>Metric</th>{rows.map((row)=><th key={row.dossier.participant.id}>{row.dossier.participant.current_name}</th>)}</tr></thead><tbody>
+    {rows.length>=2?<div className="panel"><div className="data-scroll"><table className="data-table compare-table"><thead><tr><th>Metric</th>{rows.map((row)=><th key={row.dossier.participant.id}>{row.dossier.participant.current_name}</th>)}</tr></thead><tbody>
       {Object.entries(BOARD_LABELS).map(([id,label])=><tr key={id}><td>{label}</td>{rows.map((row)=>{const value=row.latest.get(id);return <td key={row.dossier.participant.id}>{value?`${Number(value.score_raw).toLocaleString("en-US")}${id.includes("VALUE")?" cr":""}`:"—"}</td>;})}</tr>)}
       {metricRows.map(([label,render])=><tr key={label}><td>{label}</td>{rows.map((row)=><td key={row.dossier.participant.id}>{render(row.hunter)}</td>)}</tr>)}
-    </tbody></table></div>:<div className="empty">Select at least two hunters to begin comparison.</div>}
+    </tbody></table></div></div>:<div className="empty">Select at least two hunters to begin comparison.</div>}
   </div>;
 }
