@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Viewport } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GlobalSearch } from "@/components/global-search";
@@ -11,6 +12,8 @@ export const metadata: Metadata = {
   title: { default: "Outer Rim Ledger", template: "%s · Outer Rim Ledger" },
   description: "An independent, lossless historical archive of public SWG Legends Bounty Hunter activity.",
 };
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#06090d" };
 
 const nav = [["Encounters", "/"], ["Hunters", "/hunters"], ["Guilds", "/guilds"], ["Raw data", "/raw-data"], ["Compare", "/compare"]] as const;
 
@@ -25,8 +28,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="brand-mark">OR</span>
               <span><b>Outer Rim Ledger</b><small>Bounty intelligence archive</small></span>
             </Link>
-            <nav aria-label="Primary navigation">{nav.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}</nav>
-            <GlobalSearch />
+            <nav className="desktop-nav" aria-label="Primary navigation">{nav.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}</nav>
+            <div className="desktop-search"><GlobalSearch /></div>
+            <details className="mobile-navigation">
+              <summary><span className="menu-icon" aria-hidden="true"><i/><i/><i/></span><span>Menu</span></summary>
+              <div className="mobile-menu">
+                <GlobalSearch />
+                <nav aria-label="Mobile navigation">{nav.map(([label, href]) => <Link key={href} href={href}>{label}<span aria-hidden="true">→</span></Link>)}</nav>
+              </div>
+            </details>
           </div>
         </header>
         <main>{children}</main>
