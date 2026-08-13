@@ -128,6 +128,11 @@ h1 { margin: 12px 0 14px; max-width: 800px; font-size: clamp(40px,7vw,78px); lin
 .raw-json { margin: 0; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 var(--font-mono); max-height: 72vh; overflow: auto; }
 .metadata-json { color: var(--muted); max-height: none; }
 .raw-payload-panel { margin-top: 20px; }
+.endpoint-panel { margin-top: 14px; }
+.endpoint-panel h3 code { font: 600 13px var(--font-mono); color: var(--signal); text-transform: none; letter-spacing: 0; }
+.endpoint-summary { margin: -6px 0 14px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.endpoint-param { white-space: nowrap; font-family: var(--font-mono); font-size: 12px; }
+.endpoint-table td { color: var(--muted); font-size: 12px; }
 .health-good { color: var(--success); }.health-bad { color: var(--danger); }
 .site-footer { border-top: 1px solid var(--line); margin-top: 60px; padding: 35px 0; color: var(--dim); font-size: 11px; }.footer-grid { display: flex; justify-content: space-between; gap: 30px; }.footer-grid p { max-width: 600px; line-height: 1.6; }.footer-links { display: flex; gap: 18px; align-items: center; }
 
@@ -172,6 +177,7 @@ h1 { margin: 12px 0 14px; max-width: 800px; font-size: clamp(40px,7vw,78px); lin
   .tabbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; scroll-snap-type: x proximity; margin-inline: -12px; padding: 0 12px 5px; }.tabbar a { flex: 0 0 auto; min-height: 42px; display: inline-flex; align-items: center; scroll-snap-align: start; }
   .data-scroll { overflow-x: auto; margin-inline: -15px; padding-inline: 15px; overscroll-behavior-inline: contain; scrollbar-width: thin; }.data-table { min-width: 680px; }
   .data-table:not(.mobile-cards) th,.data-table:not(.mobile-cards) td { white-space: nowrap; }
+  .endpoint-table { min-width: 0; }.data-table.endpoint-table td { white-space: normal; }
   .mobile-cards { min-width: 0; border-collapse: separate; }
   .mobile-cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .mobile-cards tbody { display: grid; gap: 10px; }

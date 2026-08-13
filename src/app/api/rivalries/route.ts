@@ -13,5 +13,5 @@ export async function GET(request: Request) {
   if (limited) return limited;
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return Response.json({ error: "Invalid rivalry query" }, { status: 400 });
-  return Response.json(await getRivalries(parsed.data));
+  return Response.json(await getRivalries(parsed.data), { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } });
 }

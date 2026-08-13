@@ -39,4 +39,46 @@ describe("admin authentication challenge", () => {
     expect(response.status).toBe(401);
     expect(response.headers.has("www-authenticate")).toBe(false);
   });
+
+  it("never adds CORS headers to admin responses", async () => {
+    const response = await proxy(new NextRequest("http://localhost/admin/ingestion", {
+      headers: { accept: "text/html", origin: "https://community.example" },
+    }));
+
+    expect(response.headers.has("access-control-allow-origin")).toBe(false);
+  });
+});
+
+describe("public API CORS", () => {
+  it("allows any origin on API requests", async () => {
+    const response = await proxy(new NextRequest("http://localhost/api/encounters", {
+      headers: { origin: "https://community.example" },
+    }));
+
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-allow-methods")).toContain("GET");
+  });
+
+  it("answers preflight requests without touching route handlers", async () => {
+    const response = await proxy(new NextRequest("http://localhost/api/encounters", {
+      method: "OPTIONS",
+      headers: { origin: "https://community.example", "access-control-request-method": "GET" },
+    }));
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-max-age")).toBe("86400");
+  });
+
+  it("does not require admin credentials for API routes", async () => {
+    const previousUsername = process.env.ADMIN_USERNAME;
+    delete process.env.ADMIN_USERNAME;
+    try {
+      const response = await proxy(new NextRequest("http://localhost/api/health"));
+      expect(response.status).not.toBe(503);
+      expect(response.status).not.toBe(401);
+    } finally {
+      if (previousUsername !== undefined) process.env.ADMIN_USERNAME = previousUsername;
+    }
+  });
 });

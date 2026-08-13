@@ -17,5 +17,5 @@ export async function GET(request: Request) {
   if (limited) return limited;
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return Response.json({ error: "Invalid query", issues: parsed.error.issues }, { status: 400 });
-  return Response.json(await getEncounters(parsed.data));
+  return Response.json(await getEncounters(parsed.data), { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } });
 }

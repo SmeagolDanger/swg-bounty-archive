@@ -15,5 +15,5 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success) return Response.json({ error: "Invalid hunter directory query" }, { status: 400 });
-  return Response.json(await getHunterDirectory(parsed.data));
+  return Response.json(await getHunterDirectory(parsed.data), { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } });
 }

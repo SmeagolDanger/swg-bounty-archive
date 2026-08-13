@@ -10,7 +10,23 @@ function isBackgroundNavigation(request: NextRequest) {
     || request.headers.get("accept")?.includes("text/x-component") === true;
 }
 
+// The public API is read-only and serves data that is already public at its source,
+// so any origin may call it. Admin routes are excluded: they never receive CORS
+// headers, and the wildcard is safe because credentials are never allowed with it.
+const publicApiCors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Accept, Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/api")) {
+    if (request.method === "OPTIONS") return new NextResponse(null, { status: 204, headers: publicApiCors });
+    const response = NextResponse.next();
+    for (const [header, value] of Object.entries(publicApiCors)) response.headers.set(header, value);
+    return response;
+  }
   const username = process.env.ADMIN_USERNAME;
   const passwordHash = process.env.ADMIN_PASSWORD_HASH;
   if (!username || !passwordHash) return new NextResponse("Admin access is disabled until credentials are configured.", { status: 503 });
@@ -29,4 +45,4 @@ export async function proxy(request: NextRequest) {
   return new NextResponse("Authentication required", { status: 401, headers });
 }
 
-export const config = { matcher: ["/admin/:path*"] };
+export const config = { matcher: ["/admin/:path*", "/api/:path*"] };

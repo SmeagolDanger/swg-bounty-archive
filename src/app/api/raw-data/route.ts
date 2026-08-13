@@ -12,5 +12,5 @@ export async function GET(request: Request) {
   if (limited) return limited;
   const parsed = schema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return Response.json({ error: "Invalid raw-data query" }, { status: 400 });
-  return Response.json(await getRawData(parsed.data));
+  return Response.json(await getRawData(parsed.data), { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=300" } });
 }

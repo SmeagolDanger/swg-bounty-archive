@@ -32,8 +32,8 @@ export async function GET() {
       workerHeartbeat: row.heartbeat_at,
       worker: { status: workerStatus, lastHeartbeatAt: row.heartbeat_at, lastCompletedAt: row.last_completed_at, lastRunStatus: row.last_run_status },
       timestamp: new Date().toISOString(),
-    }, { status: unhealthy ? 503 : 200 });
+    }, { status: unhealthy ? 503 : 200, headers: { "Cache-Control": "no-store" } });
   } catch {
-    return Response.json({ status: "error", database: "unavailable", worker: { status: "unknown" }, timestamp: new Date().toISOString() }, { status: 503 });
+    return Response.json({ status: "error", database: "unavailable", worker: { status: "unknown" }, timestamp: new Date().toISOString() }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 }

@@ -8,5 +8,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const parsed = z.uuid().safeParse((await params).id);
   if (!parsed.success) return Response.json({ error: "Invalid ingestion id" }, { status: 400 });
   const row = await getRawIngestion(parsed.data);
-  return row ? Response.json(row) : Response.json({ error: "Raw response not found" }, { status: 404 });
+  return row ? Response.json(row, { headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" } }) : Response.json({ error: "Raw response not found" }, { status: 404 });
 }
