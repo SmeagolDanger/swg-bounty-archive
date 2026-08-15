@@ -70,7 +70,7 @@ suite("ingestion observability persistence", () => {
 
     await expect(ingestFixture(runId, "bounty_activity", "bounty", payload, { case: `validation-${suffix}` })).rejects.toThrow();
     const archived = await pool.query<{ processing_status: string; payload: unknown; error_information: Record<string, unknown> }>(
-      "SELECT processing_status,payload,error_information FROM api_ingestions WHERE run_id=$1 AND request_parameters->>'case'=$2",
+      "SELECT i.processing_status,b.payload,i.error_information FROM api_ingestions i LEFT JOIN payload_blobs b ON b.payload_hash=i.payload_hash WHERE i.run_id=$1 AND i.request_parameters->>'case'=$2",
       [runId, `validation-${suffix}`],
     );
     expect(archived.rowCount).toBe(1);

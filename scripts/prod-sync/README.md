@@ -49,7 +49,8 @@ compose="docker compose --env-file .env.production -f docker-compose.prod.yml"
 # 3. Safety backup with the built-in tooling (checksummed dump → ./backups):
 $compose run --rm db-tools
 
-# 4. Confirm prod matches dev's migration level (expect 0000..0006):
+# 4. Confirm BOTH databases are on the same migration level (0008+ required
+#    since payload dedup; the merge assumes identical schemas):
 $compose exec -T postgres psql -U swg -d swg_bounty \
   -c "SELECT version FROM schema_versions ORDER BY version"
 

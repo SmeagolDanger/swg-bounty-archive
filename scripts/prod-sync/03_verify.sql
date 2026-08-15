@@ -67,6 +67,17 @@ WHERE NOT EXISTS (
     AND ppart.source_participant_id = spart.source_participant_id
     AND p.wins = s.wins AND p.rank = s.rank);
 
+-- Content-addressed payloads: every staged blob must exist in public.
+SELECT count(*) AS missing_payload_blobs
+FROM staging_import.payload_blobs s
+WHERE NOT EXISTS (SELECT 1 FROM public.payload_blobs p WHERE p.payload_hash = s.payload_hash);
+
+-- Every archived response that has a hash can resolve its payload bytes.
+SELECT count(*) AS dangling_payload_refs
+FROM public.api_ingestions i
+WHERE i.payload_hash IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM public.payload_blobs b WHERE b.payload_hash = i.payload_hash);
+
 -- Raw archive: every staged response is present either under its own id or
 -- as prod's identical observation (endpoint + requested_at + payload hash).
 SELECT count(*) AS missing_ingestions

@@ -242,11 +242,11 @@ export interface RawDataFilters {
 
 export async function getRawData(filters: RawDataFilters = {}) {
   const values: unknown[] = [];
-  const conditions: string[] = ["i.payload IS NOT NULL"];
+  const conditions: string[] = ["i.payload_hash IS NOT NULL"];
   const bind = (value: unknown) => { values.push(value); return `$${values.length}`; };
   if (filters.q?.trim()) {
     const token = bind(filters.q.trim());
-    conditions.push(`jsonb_to_tsvector('simple',coalesce(i.payload,'{}'::jsonb),'["string","numeric","key"]'::jsonb) @@ websearch_to_tsquery('simple',${token})`);
+    conditions.push(`jsonb_to_tsvector('simple',coalesce(b.payload,'{}'::jsonb),'["string","numeric","key"]'::jsonb) @@ websearch_to_tsquery('simple',${token})`);
   }
   if (filters.source?.trim()) conditions.push(`s.source_key=${bind(filters.source.trim())}`);
   if (filters.status) conditions.push(`i.processing_status=${bind(filters.status)}`);
@@ -258,23 +258,24 @@ export async function getRawData(filters: RawDataFilters = {}) {
   const where = `WHERE ${conditions.join(" AND ")}`;
   const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? 25));
   const page = Math.max(1, filters.page ?? 1);
-  const count = await pool.query(`SELECT count(*)::int AS count FROM api_ingestions i JOIN api_sources s ON s.id=i.source_id ${where}`, values);
+  const count = await pool.query(`SELECT count(*)::int AS count FROM api_ingestions i JOIN api_sources s ON s.id=i.source_id LEFT JOIN payload_blobs b ON b.payload_hash=i.payload_hash ${where}`, values);
   values.push(pageSize, (page - 1) * pageSize);
   const rows = await pool.query(`SELECT i.id,s.source_key,i.endpoint,i.request_parameters,i.response_received_at,i.duration_ms,i.http_status,
-      i.processing_status,i.payload_hash,i.schema_signature,i.parser_version,octet_length(convert_to(i.payload::text,'UTF8'))::int AS payload_bytes,
-      left(i.payload::text,280) AS preview
-    FROM api_ingestions i JOIN api_sources s ON s.id=i.source_id ${where}
+      i.processing_status,i.payload_hash,i.schema_signature,i.parser_version,octet_length(convert_to(b.payload::text,'UTF8'))::int AS payload_bytes,
+      left(b.payload::text,280) AS preview
+    FROM api_ingestions i JOIN api_sources s ON s.id=i.source_id LEFT JOIN payload_blobs b ON b.payload_hash=i.payload_hash ${where}
     ORDER BY i.response_received_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
-  const sources = await pool.query(`SELECT s.source_key,s.endpoint,count(i.id) FILTER(WHERE i.payload IS NOT NULL)::int AS responses
+  const sources = await pool.query(`SELECT s.source_key,s.endpoint,count(i.id) FILTER(WHERE i.payload_hash IS NOT NULL)::int AS responses
     FROM api_sources s LEFT JOIN api_ingestions i ON i.source_id=s.id GROUP BY s.id,s.source_key,s.endpoint ORDER BY s.source_key`);
   return { rows: rows.rows, total: count.rows[0].count as number, page, pageSize, sources: sources.rows };
 }
 
 export async function getRawIngestion(id: string) {
   const result = await pool.query(`SELECT i.id,i.run_id,s.source_key,r.run_type,i.endpoint,i.request_parameters,i.requested_at,
-      i.response_received_at,i.duration_ms,i.http_status,i.payload,i.payload_hash,i.schema_signature,i.parser_version,i.processing_status
+      i.response_received_at,i.duration_ms,i.http_status,b.payload,i.payload_hash,i.schema_signature,i.parser_version,i.processing_status
     FROM api_ingestions i JOIN api_sources s ON s.id=i.source_id JOIN ingestion_runs r ON r.id=i.run_id
-    WHERE i.id::text=$1 AND i.payload IS NOT NULL`, [id]);
+    JOIN payload_blobs b ON b.payload_hash=i.payload_hash
+    WHERE i.id::text=$1`, [id]);
   return result.rows[0] ?? null;
 }
 

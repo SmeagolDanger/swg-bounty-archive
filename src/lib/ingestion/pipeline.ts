@@ -363,11 +363,20 @@ async function archiveAndProcess(runId: string, item: WorkItem, result: FetchRes
   const sourceId = source.rows[0].id;
   const shape = result.payload === null ? null : schemaSignature(result.payload);
   const initialStatus = result.status >= 200 && result.status < 300 ? "RECEIVED" : "HTTP_ERROR";
+  const payloadHash = result.payload === null ? null : sha256(result.payload);
+  // Payload bytes are content-addressed: one payload_blobs row per unique
+  // hash, referenced by every api_ingestions row that observed that content.
+  if (payloadHash !== null) {
+    await pool.query(
+      "INSERT INTO payload_blobs(payload_hash,payload) VALUES($1,$2::jsonb) ON CONFLICT (payload_hash) DO NOTHING",
+      [payloadHash, json(result.payload)],
+    );
+  }
   const ingestion = await pool.query<{ id: string }>(
-    `INSERT INTO api_ingestions(run_id,source_id,endpoint,request_parameters,requested_at,response_received_at,duration_ms,http_status,response_headers,payload,payload_hash,schema_signature,parser_version,processing_status)
-     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14) RETURNING id`,
+    `INSERT INTO api_ingestions(run_id,source_id,endpoint,request_parameters,requested_at,response_received_at,duration_ms,http_status,response_headers,payload_hash,schema_signature,parser_version,processing_status)
+     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13) RETURNING id`,
     [runId, sourceId, `${baseUrl}${item.path}`, json(item.parameters), result.requestedAt, result.receivedAt, result.durationMs, result.status,
-      json(result.headers), result.payload === null ? null : json(result.payload), result.payload === null ? null : sha256(result.payload), shape?.signature ?? null,
+      json(result.headers), payloadHash, shape?.signature ?? null,
       PARSER_VERSION, initialStatus],
   );
   const ingestionId = ingestion.rows[0].id;

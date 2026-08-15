@@ -56,7 +56,6 @@ export const apiIngestions = pgTable("api_ingestions", {
   durationMs: integer("duration_ms").notNull(),
   httpStatus: integer("http_status").notNull(),
   responseHeaders: jsonb("response_headers").notNull(),
-  payload: jsonb("payload"),
   payloadHash: text("payload_hash"),
   schemaSignature: text("schema_signature"),
   parserVersion: text("parser_version").notNull(),
@@ -64,6 +63,12 @@ export const apiIngestions = pgTable("api_ingestions", {
   errorInformation: jsonb("error_information"),
   createdAt: created(),
 }, (table) => [index("api_ingestions_received_idx").on(table.responseReceivedAt)]);
+
+export const payloadBlobs = pgTable("payload_blobs", {
+  payloadHash: text("payload_hash").primaryKey(),
+  payload: jsonb("payload").notNull(),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const participants = pgTable("participants", {
   id: uuid("id").primaryKey().defaultRandom(),

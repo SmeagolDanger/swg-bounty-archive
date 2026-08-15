@@ -34,6 +34,7 @@ fi
 TABLES=(
   api_sources
   ingestion_runs
+  payload_blobs
   api_ingestions
   schema_signatures
   leaderboards

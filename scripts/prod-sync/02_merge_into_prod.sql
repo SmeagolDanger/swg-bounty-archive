@@ -3,6 +3,7 @@
 -- table's logical identity, so a second application inserts zero rows.
 --
 -- Identity / dedup rules (mirrors the schema's unique constraints):
+--   payload_blobs             payload_hash (content-addressed)
 --   api_ingestions            id, plus (endpoint, requested_at, payload_hash) semantic guard
 --   schema_signatures         (source_id, signature)
 --   leaderboards              id (text)
@@ -61,6 +62,24 @@ WITH ins AS (
 SELECT count(*) AS inserted_ingestion_runs FROM ins;
 
 -- ── 2. Raw archive ───────────────────────────────────────────────────
+-- Payload content is content-addressed (migration 0008): blobs first so the
+-- api_ingestions FK is satisfied, deduped by hash across environments.
+
+WITH ins AS (
+  INSERT INTO public.payload_blobs (payload_hash, payload, first_seen_at)
+  SELECT s.payload_hash, s.payload, s.first_seen_at
+  FROM staging_import.payload_blobs s
+  ON CONFLICT (payload_hash) DO NOTHING
+  RETURNING 1
+)
+SELECT count(*) AS inserted_payload_blobs FROM ins;
+
+-- Recover the earlier first_seen_at when both environments hold the blob.
+UPDATE public.payload_blobs p
+SET first_seen_at = LEAST(p.first_seen_at, s.first_seen_at)
+FROM staging_import.payload_blobs s
+WHERE s.payload_hash = p.payload_hash AND s.first_seen_at < p.first_seen_at;
+
 -- Keep every distinct observation; skip only true duplicates: same PK
 -- (re-run of this script) or the identical response already archived by
 -- prod's own collector (same endpoint + requested_at + payload hash).
@@ -68,11 +87,11 @@ SELECT count(*) AS inserted_ingestion_runs FROM ins;
 WITH ins AS (
   INSERT INTO public.api_ingestions (id, run_id, source_id, endpoint, request_parameters,
     requested_at, response_received_at, duration_ms, http_status, response_headers,
-    payload, payload_hash, schema_signature, parser_version, processing_status,
+    payload_hash, schema_signature, parser_version, processing_status,
     error_information, created_at)
   SELECT s.id, s.run_id, m.new_id, s.endpoint, s.request_parameters,
     s.requested_at, s.response_received_at, s.duration_ms, s.http_status, s.response_headers,
-    s.payload, s.payload_hash, s.schema_signature, s.parser_version, s.processing_status,
+    s.payload_hash, s.schema_signature, s.parser_version, s.processing_status,
     s.error_information, s.created_at
   FROM staging_import.api_ingestions s
   JOIN map_sources m ON m.old_id = s.source_id
