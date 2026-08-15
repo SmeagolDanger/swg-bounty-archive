@@ -18,9 +18,9 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 | --- | --- |
 | `GET /api/encounters` | Immutable encounter log with name, outcome, payout, and date filters (`tz`-aware) |
 | `GET /api/hunters` | Hunter directory with board ranks and derived archive records |
-| `GET /api/hunters/{id}` | Full dossier: history, encounters, opponents, rivalries, summaries |
+| `GET /api/hunters/{id}` | Full dossier: history, encounters, opponents, rivalries, summaries, weekly GCW standings (`gcwStandings`), Officers' Salute commission (`officerSalute`) |
 | `GET /api/guilds` | Guild standings combined with roster-derived activity |
-| `GET /api/leaderboards` | Archived source leaderboards (`board`, `period`, `subject`) |
+| `GET /api/leaderboards` | Archived source leaderboards (`board`, `period`, `subject`) — Bounty Hunter and GCW boards (`GCW_IMPERIAL`, `GCW_REBEL`) |
 | `GET /api/rivalries` | Repeat matchups with head-to-head records and revenge kills |
 | `GET /api/search` | Trigram search across hunters, guilds, and cities |
 | `GET /api/raw-data` | Full-text search over the lossless raw-response archive |

@@ -13,6 +13,7 @@ Responses currently carry `Cache-Control: public, max-age=60`. The client applie
 - Parameters: none.
 - Response: `{ boards: Board[], fetchedAt: ISO-8601 }`.
 - Board identifiers are uppercase strings. The Bounty Hunter boards found were `BOUNTY_HUNTER_GROUND_VALUE` (`trackerOid` `60516`, `CREDITS`), `BOUNTY_HUNTER_SPACE_VALUE` (`60517`, `CREDITS`), `BOUNTY_HUNTER_UNIQUE_KILLS` (`60518`, `RAW`), and `BOUNTY_HUNTER_TOTAL_KILLS` (`60519`, `RAW`).
+- GCW boards (verified 2026-08-15, category `GCW`): `GCW_IMPERIAL` (`60500`, `PERCENT`) and `GCW_REBEL` (`60501`, `PERCENT`). Both expose all three subjects (`player`, `guild`, `city`) and the same three weekly periods. For `PERCENT` boards, `score` is the raw GCW point total and `scoreRaw` is the faction-share **percent string** (e.g. `"7.8584846559953885%"`) — the only board family whose `scoreRaw` is not a plain decimal string. Guild-subject entries carry `faction` (`Imperial`/`Rebel`); the wins feed works for GCW board ids and returns guild and city wins only.
 - Each board includes `id`, `trackerOid`, `name`, `category`, `valueType`, `periodStartTime`, and `periodEndTime`. Period timestamps are Unix seconds.
 - Pagination: none.
 - Relationship: discovers boards and the current period used by the parameterized feeds.
@@ -60,6 +61,15 @@ Example:
 ```json
 {"timestamp":"2026-08-12T00:56:07.000Z","outcome":"KILL","hunterName":"Shepard EffectMass","targetName":"Yigo Shiddo","credits":27065}
 ```
+
+### `GET /api/game/gcw-officers`
+
+- Discovered 2026-08-15 from the public "Officers' Salute" page (`/game/gcw-officers`) and its bundle.
+- Required query parameter: `faction` (`IMPERIAL` or `REBEL`). No pagination parameter is used by the public client; the response is capped at 250 rows per faction while `totalResults` reports the full population.
+- Response: `{ faction, officers, totalResults, fetchedAt }`.
+- Officer entry: `{ oid, name, factionName, rankIndex, rankName, currentGcwPoints, currentPvpKills, lifetimeGcwPoints, lifetimePvpKills, profession, guildName, guildAbbreviation, residentPlanet, residentCityName }`.
+- `oid` is the same stable participant identity used by the leaderboard feeds. Rows span every GCW rank (1 Private through 12 General), with faction-specific rank names; commissioned officers are `rankIndex >= 7` (Lieutenant and above).
+- `currentGcwPoints`/`currentPvpKills` are the running weekly totals; `lifetime*` fields are all-time. This archive snapshots the registry state per faction and dedupes identical observations on a content hash.
 
 ## Headers and validation behavior
 

@@ -1,16 +1,16 @@
 import type { PoolClient } from "pg";
 import { ZodError } from "zod";
 import { pool } from "@/lib/db/client";
-import { BOUNTY_BOARD_IDS, PARSER_VERSION, PERIODS, SUBJECTS, swgBaseUrl } from "./config";
+import { GCW_FACTIONS, PARSER_VERSION, PERIODS, SUBJECTS, swgBaseUrl, TRACKED_BOARD_CATEGORIES, TRACKED_BOARD_IDS } from "./config";
 import { diffSchema, encounterFingerprint, hasUnobservedArrayMembers, schemaSignature, sha256, type SchemaStructure } from "./hash";
 import { fetchJson, type FetchResult } from "./fetcher";
-import { boardCatalogSchema, bountySchema, leaderboardSchema, winsSchema } from "./schemas";
+import { boardCatalogSchema, bountySchema, leaderboardSchema, winsSchema, officersSchema } from "./schemas";
 import { findUnknownFields } from "./unknown-fields";
 import { log } from "@/lib/observability/logger";
 
 type RunType = "ONCE" | "POLL" | "BACKFILL" | "RECONCILE" | "INSPECT";
-type SourceKey = "board_catalog" | "bounty_activity" | "leaderboard" | "leaderboard_wins";
-type Processor = "catalog" | "bounty" | "leaderboard" | "wins";
+type SourceKey = "board_catalog" | "bounty_activity" | "leaderboard" | "leaderboard_wins" | "gcw_officers";
+type Processor = "catalog" | "bounty" | "leaderboard" | "wins" | "officers";
 
 interface WorkItem {
   sourceKey: SourceKey;
@@ -106,7 +106,7 @@ async function processCatalog(client: PoolClient, payload: unknown, ingestionId:
   let inserted = 0;
   let unchanged = 0;
   let revised = 0;
-  for (const board of data.boards.filter((item) => item.category === "Bounty Hunter")) {
+  for (const board of data.boards.filter((item) => (TRACKED_BOARD_CATEGORIES as readonly string[]).includes(item.category))) {
     const old = await client.query<{ name: string; tracker_oid: string; category: string; value_type: string }>("SELECT name,tracker_oid,category,value_type FROM leaderboards WHERE id=$1", [board.id]);
     if (old.rows[0]) {
       for (const field of ["name", "tracker_oid", "category", "value_type"] as const) {
@@ -128,7 +128,7 @@ async function processCatalog(client: PoolClient, payload: unknown, ingestionId:
 
 async function processLeaderboard(client: PoolClient, payload: unknown, ingestionId: string, observedAt: Date): Promise<Counters> {
   const data = leaderboardSchema.parse(payload);
-  if (!BOUNTY_BOARD_IDS.includes(data.id as (typeof BOUNTY_BOARD_IDS)[number])) throw new Error(`Not an approved Bounty Hunter board: ${data.id}`);
+  if (!TRACKED_BOARD_IDS.includes(data.id as (typeof TRACKED_BOARD_IDS)[number])) throw new Error(`Not an approved board: ${data.id}`);
   const board = await client.query("SELECT id FROM leaderboards WHERE id=$1", [data.id]);
   if (!board.rowCount) throw new Error(`Board catalog must be imported before ${data.id}`);
 
@@ -203,7 +203,7 @@ async function processBounty(client: PoolClient, payload: unknown, ingestionId: 
 
 async function processWins(client: PoolClient, payload: unknown, ingestionId: string, observedAt: Date): Promise<Counters> {
   const data = winsSchema.parse(payload);
-  if (!BOUNTY_BOARD_IDS.includes(data.id as (typeof BOUNTY_BOARD_IDS)[number])) throw new Error(`Not an approved Bounty Hunter board: ${data.id}`);
+  if (!TRACKED_BOARD_IDS.includes(data.id as (typeof TRACKED_BOARD_IDS)[number])) throw new Error(`Not an approved board: ${data.id}`);
   let inserted = 0;
   let unchanged = 0;
   let revised = 0;
@@ -220,6 +220,48 @@ async function processWins(client: PoolClient, payload: unknown, ingestionId: st
     }
   }
   return { received: data.cityWins.length + data.guildWins.length, inserted, unchanged, revised, duplicates: unchanged };
+}
+
+async function processOfficers(client: PoolClient, payload: unknown, ingestionId: string, observedAt: Date): Promise<Counters> {
+  const data = officersSchema.parse(payload);
+  // One immutable snapshot per distinct registry state per faction; identical
+  // re-observations dedupe on (faction, state_hash) like leaderboard snapshots.
+  const stateHash = sha256({ faction: data.faction, totalResults: data.totalResults, officers: data.officers });
+  const snapshot = await client.query<{ id: string }>(
+    `INSERT INTO gcw_officer_snapshots(faction,total_results,state_hash,source_fetched_at,observed_at,source_ingestion_id,raw)
+     VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) ON CONFLICT(faction,state_hash) DO NOTHING RETURNING id`,
+    [data.faction, data.totalResults, stateHash, new Date(data.fetchedAt), observedAt, ingestionId, json(data)],
+  );
+  if (!snapshot.rows[0]) {
+    return { received: data.officers.length, inserted: 0, unchanged: data.officers.length, revised: 0, duplicates: data.officers.length };
+  }
+  const snapshotId = snapshot.rows[0].id;
+  let inserted = 0;
+  let revised = 0;
+  for (const officer of data.officers) {
+    const participant = await upsertParticipant(client, "player", {
+      participantId: officer.oid,
+      name: officer.name,
+      guildAbbreviation: officer.guildAbbreviation,
+      faction: officer.factionName,
+      planet: officer.residentPlanet,
+      cityName: officer.residentCityName,
+    }, ingestionId, officer);
+    revised += participant.revised;
+    const result = await client.query(
+      `INSERT INTO gcw_officer_entries(snapshot_id,participant_id,source_participant_id,name,faction_name,rank_index,rank_name,
+        current_gcw_points,current_pvp_kills,lifetime_gcw_points,lifetime_pvp_kills,
+        profession,guild_name,guild_abbreviation,resident_planet,resident_city_name,source_ingestion_id,raw)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
+       ON CONFLICT(snapshot_id,source_participant_id) DO NOTHING RETURNING id`,
+      [snapshotId, participant.id, officer.oid, officer.name, officer.factionName, officer.rankIndex, officer.rankName,
+       officer.currentGcwPoints, officer.currentPvpKills, officer.lifetimeGcwPoints, officer.lifetimePvpKills,
+       officer.profession, officer.guildName, officer.guildAbbreviation, officer.residentPlanet, officer.residentCityName,
+       ingestionId, json(officer)],
+    );
+    if (result.rowCount) inserted += 1;
+  }
+  return { received: data.officers.length, inserted, unchanged: 0, revised, duplicates: 0 };
 }
 
 function validationDetails(error: unknown): { message: string; affectedPaths: string[] } {
@@ -353,6 +395,7 @@ async function archiveAndProcess(runId: string, item: WorkItem, result: FetchRes
     if (item.processor === "catalog") counters = await processCatalog(client, result.payload, ingestionId);
     else if (item.processor === "leaderboard") counters = await processLeaderboard(client, result.payload, ingestionId, result.receivedAt);
     else if (item.processor === "wins") counters = await processWins(client, result.payload, ingestionId, result.receivedAt);
+    else if (item.processor === "officers") counters = await processOfficers(client, result.payload, ingestionId, result.receivedAt);
     else counters = await processBounty(client, result.payload, ingestionId, result.receivedAt);
     await client.query("UPDATE api_ingestions SET processing_status='PROCESSED' WHERE id=$1", [ingestionId]);
     await client.query("UPDATE api_sources SET last_success_at=now(),last_attempt_at=now() WHERE id=$1", [sourceId]);
@@ -382,13 +425,17 @@ async function archiveAndProcess(runId: string, item: WorkItem, result: FetchRes
 
 function buildWork(periods: readonly string[] = PERIODS): WorkItem[] {
   const items: WorkItem[] = [{ sourceKey: "bounty_activity", path: "/api/game/bounty-hunting", parameters: {}, processor: "bounty" }];
-  for (const id of BOUNTY_BOARD_IDS) {
+  for (const id of TRACKED_BOARD_IDS) {
     for (const period of periods) for (const subject of SUBJECTS) {
       const parameters = { id, period, subject };
       items.push({ sourceKey: "leaderboard", path: `/api/game/leaderboard?${new URLSearchParams(parameters)}`, parameters, processor: "leaderboard" });
     }
     const parameters = { id };
     items.push({ sourceKey: "leaderboard_wins", path: `/api/game/leaderboard-wins?${new URLSearchParams(parameters)}`, parameters, processor: "wins" });
+  }
+  for (const faction of GCW_FACTIONS) {
+    const parameters = { faction };
+    items.push({ sourceKey: "gcw_officers", path: `/api/game/gcw-officers?${new URLSearchParams(parameters)}`, parameters, processor: "officers" });
   }
   return items;
 }

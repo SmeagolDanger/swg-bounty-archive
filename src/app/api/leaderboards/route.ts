@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { getLeaderboard } from "@/lib/data";
-import { BOUNTY_BOARD_IDS, PERIODS, SUBJECTS } from "@/lib/ingestion/config";
+import { PERIODS, SUBJECTS, TRACKED_BOARD_IDS } from "@/lib/ingestion/config";
 import { rateLimited } from "@/lib/rate-limit";
 
 const schema = z.object({
-  board: z.enum(BOUNTY_BOARD_IDS), period: z.enum(PERIODS).default("CURRENT"), subject: z.enum(SUBJECTS).default("player"),
+  board: z.enum(TRACKED_BOARD_IDS), period: z.enum(PERIODS).default("CURRENT"), subject: z.enum(SUBJECTS).default("player"),
 });
 
 export async function GET(request: Request) {

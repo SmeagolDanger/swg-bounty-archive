@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { BOARD_LABELS, getParticipant } from "@/lib/data";
+import type React from "react";
+import { BOARD_LABELS, GCW_BOARD_FACTIONS, GCW_BOARD_LABELS, getParticipant } from "@/lib/data";
 import { EncounterList } from "./encounter-list";
 import { HistoryChart } from "./history-chart";
 import { HunterActivityChart } from "./hunter-activity-chart";
@@ -11,6 +12,11 @@ import { LocalDateTime } from "./local-date-time";
 export const loadParticipant = cache(getParticipant);
 
 const integer = (value: unknown) => Number(value ?? 0).toLocaleString("en-US");
+// GCW score_raw is the source's faction-share percent string ("7.8584…%").
+const gcwShare = (value: unknown) => {
+  const parsed = Number.parseFloat(String(value ?? ""));
+  return Number.isFinite(parsed) ? `${parsed.toFixed(2)}%` : "—";
+};
 const percent = (value: unknown) => value === null || value === undefined ? "—" : `${Math.round(Number(value) * 100)}%`;
 const date = (value: unknown) => value ? <LocalDateTime value={value as string | Date} kind="date"/> : "—";
 
@@ -19,6 +25,98 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
   if (!data) notFound();
   const latest = new Map<string, Record<string, unknown>>();
   for (const row of data.history) if (!latest.has(row.leaderboard_id)) latest.set(row.leaderboard_id, row);
+  // GCW standings arrive newest-period-first per board; index them for the panel.
+  const gcwByBoard = new Map<string, typeof data.gcwStandings>();
+  for (const row of data.gcwStandings ?? []) {
+    const rows = gcwByBoard.get(row.leaderboard_id) ?? [];
+    rows.push(row);
+    gcwByBoard.set(row.leaderboard_id, rows);
+  }
+  const gcwWinsByBoard = new Map((data.gcwWins ?? []).map((row) => [row.leaderboard_id, row]));
+  const gcwBoards = Object.keys(GCW_BOARD_LABELS);
+  const salute = data.officerSalute;
+  const saluteIsOfficer = salute && Number(salute.rank_index) >= 7;
+  const corps = data.officerCorps;
+  const gcwSubjectNoun = type === "player" ? "players" : type === "guild" ? "guilds" : "cities";
+  const gcwPublishedCount = type === "player" ? 25 : 10;
+  const isoDay = (value: unknown) => String(value ?? "").slice(0, 10);
+
+  // Compact GCW badges: essentials on the chip, full detail in the tooltip.
+  const gcwBadgeItems: Array<{ key: string; className: string; title: string; href?: string; label: React.ReactNode }> = [];
+  for (const board of gcwBoards) {
+    const rows = gcwByBoard.get(board) ?? [];
+    const current = rows[0];
+    if (!current) continue;
+    const previous = rows[1];
+    const delta = previous ? Number(previous.rank) - Number(current.rank) : null;
+    const trend = delta === null ? "new" : delta > 0 ? `▲${delta}` : delta < 0 ? `▼${Math.abs(delta)}` : "=";
+    const wins = gcwWinsByBoard.get(board);
+    gcwBadgeItems.push({
+      key: board,
+      className: board === "GCW_IMPERIAL" ? "badge--imperial" : "badge--rebel",
+      title: `${GCW_BOARD_LABELS[board]} — rank #${current.rank} at ${gcwShare(current.score_raw)} faction share (${integer(current.score)} GCW points), week of ${isoDay(current.starts_at)}.`
+        + (previous ? ` Previous week #${previous.rank} at ${gcwShare(previous.score_raw)}.` : "")
+        + ` Best observed rank #${current.best_rank}.`
+        + (wins ? ` ${integer(wins.wins)} all-time weekly wins.` : ""),
+      label: <>{GCW_BOARD_FACTIONS[board]} GCW <b>#{integer(current.rank)}</b> · {gcwShare(current.score_raw)} · {trend}</>,
+    });
+  }
+  if (gcwBadgeItems.length === 0) {
+    gcwBadgeItems.push({
+      key: "gcw-unranked",
+      className: "badge--muted",
+      title: `Not on either faction's published GCW board this week — the source lists only the top ${gcwPublishedCount} ${gcwSubjectNoun} per faction.`,
+      label: <>GCW unranked</>,
+    });
+  }
+  if (type === "player") {
+    if (saluteIsOfficer) {
+      gcwBadgeItems.push({
+        key: "salute",
+        className: "badge--officer",
+        title: `Officers' Salute — ${salute.faction_name} ${salute.rank_name} (rank ${salute.rank_index} of 12). ${integer(salute.current_gcw_points)} GCW points and ${integer(salute.current_pvp_kills)} PvP kills this week${salute.profession ? ` · ${salute.profession}` : ""}. Observed ${isoDay(salute.observed_at)}.`,
+        label: <>⌖ <b>{salute.rank_name}</b> · {integer(salute.current_gcw_points)} pts wk</>,
+      });
+    } else {
+      gcwBadgeItems.push({
+        key: "salute-none",
+        className: "badge--muted",
+        title: salute
+          ? `Currently serving as ${salute.rank_name} (rank ${salute.rank_index} of 12) in the ${salute.faction_name} forces with ${integer(salute.current_gcw_points)} GCW points this week. The salute is reserved for commissioned officers — Lieutenant (rank 7) and above.`
+          : "No commission on record — this hunter does not appear in either faction's Officers' Salute registry this week. A Lieutenant's commission (rank 7) earns the salute.",
+        label: <>No commission</>,
+      });
+    }
+  }
+  if (type === "guild" && corps) {
+    if (corps.commissioned > 0) {
+      gcwBadgeItems.push({
+        key: "corps",
+        className: "badge--officer",
+        title: `${corps.commissioned} commissioned officer${corps.commissioned === 1 ? "" : "s"} (Lieutenant and above) and ${corps.enlisted} enlisted from this roster appear in the current Officers' Salute registry.`,
+        label: <>⌖ <b>{corps.commissioned}</b> commissioned</>,
+      });
+      for (const officer of corps.top.slice(0, 3)) {
+        gcwBadgeItems.push({
+          key: `officer-${officer.participant_id}`,
+          className: "",
+          href: `/hunter/${officer.participant_id}`,
+          title: `${officer.faction_name} ${officer.rank_name} — ${integer(officer.current_gcw_points)} GCW points this week.`,
+          label: <>{officer.name} · {officer.rank_name}</>,
+        });
+      }
+    } else {
+      gcwBadgeItems.push({
+        key: "corps-none",
+        className: "badge--muted",
+        title: "No members of this roster hold a commission in the current Officers' Salute registry.",
+        label: <>No officers</>,
+      });
+    }
+  }
+  const gcwBadges = <div className="badge-row">{gcwBadgeItems.map((item) => item.href
+    ? <Link key={item.key} className={`badge ${item.className}`} href={item.href} title={item.title} aria-label={item.title}>{item.label}</Link>
+    : <span key={item.key} className={`badge ${item.className}`} title={item.title} aria-label={item.title}>{item.label}</span>)}</div>;
   const noun = type === "player" ? "Hunter" : type === "guild" ? "Guild" : "City";
   const hunter = data.hunterSummary;
   const target = data.targetSummary;
@@ -37,6 +135,7 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
       <aside className="identity-card"><span className="chip">{noun} dossier</span><h1>{data.participant.current_name || "Unnamed source entity"}</h1><div className="identity-meta">SOURCE ID {data.participant.source_participant_id}<br/>{data.participant.guild_abbreviation && <>GUILD {data.participant.guild_id ? <Link className="entity-link" href={`/guild/${data.participant.guild_id}`}>{data.participant.guild_abbreviation}</Link> : data.participant.guild_abbreviation}<br/></>}{data.participant.city_name && <>CITY {data.participant.city_name}<br/></>}{data.participant.planet && <>PLANET {data.participant.planet}<br/></>}FIRST SEEN {date(data.participant.first_seen_at)}</div></aside>
       <div><div className="notice">Leaderboard identity uses the stable SWG participant ID. {associationNotice}</div>
         <dl className="metrics">{Object.entries(BOARD_LABELS).map(([board, label]) => { const row = latest.get(board); return <div className="metric" key={board}><dt>{label}</dt><dd>{row ? integer(row.score_raw) : "—"}</dd><small>{row ? `latest observed rank #${row.rank}` : "not observed"}</small></div>; })}</dl>
+        {gcwBadges}
       </div>
     </div>
 

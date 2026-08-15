@@ -1,0 +1,67 @@
+{
+  "id": "GCW_IMPERIAL",
+  "period": "CURRENT",
+  "subject": "player",
+  "valueType": "PERCENT",
+  "totalScore": 11427623,
+  "periodStartTime": 1786226405,
+  "periodEndTime": 1786831200,
+  "entries": [
+    {
+      "rank": 1,
+      "participantId": "23009800822",
+      "name": "SuperElf GwAzI",
+      "score": 898038,
+      "scoreRaw": "7.8584846559953885%",
+      "guildAbbreviation": "HOOD",
+      "faction": null,
+      "planet": null,
+      "cityName": "Fort Seven"
+    },
+    {
+      "rank": 2,
+      "participantId": "836765602872",
+      "name": "Yigo Shiddo",
+      "score": 751452,
+      "scoreRaw": "6.575750705111641%",
+      "guildAbbreviation": "UMBRA",
+      "faction": null,
+      "planet": null,
+      "cityName": "Rivermont"
+    },
+    {
+      "rank": 3,
+      "participantId": "570821594004",
+      "name": "Dragoneye",
+      "score": 522920,
+      "scoreRaw": "4.57592974496971%",
+      "guildAbbreviation": "-COA-",
+      "faction": null,
+      "planet": null,
+      "cityName": "Crimson Coast"
+    },
+    {
+      "rank": 4,
+      "participantId": "96725310819",
+      "name": "Elois Lightwalker",
+      "score": 511105,
+      "scoreRaw": "4.472539914906188%",
+      "guildAbbreviation": "-C-",
+      "faction": null,
+      "planet": null,
+      "cityName": "Mos Deadvlei"
+    },
+    {
+      "rank": 5,
+      "participantId": "753975622555",
+      "name": "Jiiwii",
+      "score": 510990,
+      "scoreRaw": "4.471533581393086%",
+      "guildAbbreviation": "HOOD",
+      "faction": null,
+      "planet": null,
+      "cityName": "Monke Manor"
+    }
+  ],
+  "fetchedAt": "2026-08-15T12:54:12.623Z"
+}

@@ -68,6 +68,14 @@ h1 { margin: 12px 0 14px; max-width: 800px; font-size: clamp(40px,7vw,78px); lin
 .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; }
 .panel-header h3 { margin: 0; font-size: 16px; text-transform: uppercase; letter-spacing: .05em; }
 .chip,.status { border: 1px solid var(--line-bright); color: var(--muted); padding: 4px 7px; font: 9px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+.badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--ink); padding: 4px 9px; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; cursor: default; }
+.badge b { font-weight: 700; }
+.badge--imperial { border-color: #ec7d7566; background: #ec7d7512; color: #f0a49e; }
+.badge--rebel { border-color: #e5b25b66; background: #e5b25b12; color: #eec98f; }
+.badge--officer { border-color: var(--amber); background: #e5b25b1c; color: var(--amber); }
+.badge--muted { color: var(--dim); border-color: var(--line); background: transparent; }
+a.badge:hover { border-color: var(--signal); color: var(--signal); }
 .status.kill { color: var(--success); border-color: #83d6aa55; }
 .status.failed,.status.error { color: var(--danger); border-color: #ec7d7555; }
 .encounter-list { display: grid; }

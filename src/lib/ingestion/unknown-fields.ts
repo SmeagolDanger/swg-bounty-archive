@@ -6,6 +6,8 @@ const allowed: Record<string, Set<string>> = {
   wins: new Set(["id", "cityWins", "guildWins", "fetchedAt"]),
   win: new Set(["rank", "participantId", "name", "wins", "guildAbbreviation", "faction", "planet"]),
   bounty: new Set(["windowDays", "summary", "hunters", "targets", "survivors", "recent", "fetchedAt"]),
+  officers: new Set(["faction", "officers", "totalResults", "fetchedAt"]),
+  officer: new Set(["oid", "name", "factionName", "rankIndex", "rankName", "currentGcwPoints", "currentPvpKills", "lifetimeGcwPoints", "lifetimePvpKills", "profession", "guildName", "guildAbbreviation", "residentPlanet", "residentCityName"]),
   summary: new Set(["kills", "failures", "encounters", "successRate", "creditsPaid", "averageBounty", "distinctHunters", "distinctTargets", "largestBounty"]),
   encounter: new Set(["timestamp", "outcome", "hunterName", "targetName", "credits"]),
   hunter: new Set(["rank", "name", "kills", "failures", "encounters", "successRate", "creditsEarned"]),
@@ -22,13 +24,14 @@ function arrayUnknown(value: unknown, group: keyof typeof allowed, path: string)
   return value.flatMap((item) => objectUnknown(item, group, `${path}[]`));
 }
 
-export function findUnknownFields(processor: "catalog" | "leaderboard" | "wins" | "bounty", payload: unknown): string[] {
+export function findUnknownFields(processor: "catalog" | "leaderboard" | "wins" | "bounty" | "officers", payload: unknown): string[] {
   const root = payload as Record<string, unknown>;
   if (!root || typeof root !== "object" || Array.isArray(root)) return ["$:non-object"];
   let fields: string[];
   if (processor === "catalog") fields = [...objectUnknown(root, "catalog", "$"), ...arrayUnknown(root.boards, "board", "$.boards")];
   else if (processor === "leaderboard") fields = [...objectUnknown(root, "leaderboard", "$"), ...arrayUnknown(root.entries, "entry", "$.entries")];
   else if (processor === "wins") fields = [...objectUnknown(root, "wins", "$"), ...arrayUnknown(root.cityWins, "win", "$.cityWins"), ...arrayUnknown(root.guildWins, "win", "$.guildWins")];
+  else if (processor === "officers") fields = [...objectUnknown(root, "officers", "$"), ...arrayUnknown(root.officers, "officer", "$.officers")];
   else {
     const summary = root.summary as Record<string, unknown> | undefined;
     fields = [

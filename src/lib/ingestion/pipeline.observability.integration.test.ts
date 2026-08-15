@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { pool } from "@/lib/db/client";
 import { log } from "@/lib/observability/logger";
 import { ingestFixture } from "./pipeline";
+import { PARSER_VERSION } from "./config";
 
 const suite = process.env.RUN_DB_TESTS === "1" ? describe : describe.skip;
 
@@ -78,7 +79,7 @@ suite("ingestion observability persistence", () => {
       runId,
       ingestionId: expect.any(String),
       sourceKey: "bounty_activity",
-      parserVersion: "1.3.0",
+      parserVersion: PARSER_VERSION,
       schemaSignature: expect.any(String),
       affectedPaths: expect.arrayContaining([expect.stringContaining("credits")]),
     }));

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CompareBuilder } from "@/components/compare-builder";
-import { BOARD_LABELS, getParticipant } from "@/lib/data";
+import { ALL_BOARD_LABELS, getParticipant } from "@/lib/data";
 
 export const metadata: Metadata = { title: "Compare hunters" };
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   ];
   return <div className="shell"><header className="page-head"><span className="eyebrow">{"// Side-by-side intelligence"}</span><h1>Hunter comparison</h1><p>Compare only observations actually present in the archive. Empty cells mean the source has not supplied that metric. Encounter rows count the hunter role only.</p></header><CompareBuilder initialIds={ids}/>
     {rows.length>=2?<div className="panel"><div className="data-scroll"><table className="data-table compare-table"><thead><tr><th>Metric</th>{rows.map((row)=><th key={row.dossier.participant.id}>{row.dossier.participant.current_name}</th>)}</tr></thead><tbody>
-      {Object.entries(BOARD_LABELS).map(([id,label])=><tr key={id}><td>{label}</td>{rows.map((row)=>{const value=row.latest.get(id);return <td key={row.dossier.participant.id}>{value?`${Number(value.score_raw).toLocaleString("en-US")}${id.includes("VALUE")?" cr":""}`:"—"}</td>;})}</tr>)}
+      {Object.entries(ALL_BOARD_LABELS).map(([id,label])=><tr key={id}><td>{label}</td>{rows.map((row)=>{const value=row.latest.get(id);if(!value)return <td key={row.dossier.participant.id}>—</td>;const raw=String(value.score_raw);const display=raw.endsWith("%")?`${Number.parseFloat(raw).toFixed(2)}%`:`${Number(raw).toLocaleString("en-US")}${id.includes("VALUE")?" cr":""}`;return <td key={row.dossier.participant.id}>{display}</td>;})}</tr>)}
       {metricRows.map(([label,render])=><tr key={label}><td>{label}</td>{rows.map((row)=><td key={row.dossier.participant.id}>{render(row.hunter)}</td>)}</tr>)}
     </tbody></table></div></div>:<div className="empty">Select at least two hunters to begin comparison.</div>}
   </div>;

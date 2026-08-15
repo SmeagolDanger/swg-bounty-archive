@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { bountySchema, leaderboardSchema } from "./schemas";
+import { bountySchema, leaderboardSchema, officersSchema } from "./schemas";
 
 const fixture = (name: string) => JSON.parse(readFileSync(path.resolve("fixtures/swg", name), "utf8"));
 
@@ -16,6 +16,35 @@ describe("SWG response parsers", () => {
     const data = leaderboardSchema.parse(fixture("leaderboard.json"));
     expect(data.entries[0].score).toBe(72487);
     expect(data.entries[0].scoreRaw).toBe("7248700");
+  });
+
+  it("parses the captured GCW response, keeping the percent share string verbatim", () => {
+    const data = leaderboardSchema.parse(fixture("gcw-leaderboard.json"));
+    expect(data.id).toBe("GCW_IMPERIAL");
+    expect(data.valueType).toBe("PERCENT");
+    expect(data.entries[0].scoreRaw.endsWith("%")).toBe(true);
+    expect(Number.parseFloat(data.entries[0].scoreRaw)).toBeGreaterThan(0);
+    expect(Number.isFinite(data.entries[0].score)).toBe(true);
+  });
+
+  it("parses the captured Officers' Salute response across officer and enlisted ranks", () => {
+    const data = officersSchema.parse(fixture("gcw-officers.json"));
+    expect(data.faction).toBe("REBEL");
+    expect(data.officers.some((officer) => officer.rankIndex >= 7)).toBe(true);
+    expect(data.officers.some((officer) => officer.rankIndex < 7)).toBe(true);
+    expect(data.officers[0].currentGcwPoints).toBeGreaterThanOrEqual(0);
+  });
+
+  it("rejects duplicate officer identities", () => {
+    const officers = fixture("gcw-officers.json");
+    officers.officers[1] = { ...officers.officers[0] };
+    expect(() => officersSchema.parse(officers)).toThrow();
+  });
+
+  it("rejects score strings that are neither decimal nor percent", () => {
+    const gcw = fixture("gcw-leaderboard.json");
+    gcw.entries[0].scoreRaw = "7.85%%";
+    expect(() => leaderboardSchema.parse(gcw)).toThrow();
   });
 
   it("accepts explicit timezone offsets without substituting collection time", () => {

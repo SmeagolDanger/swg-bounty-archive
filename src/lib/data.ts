@@ -1,9 +1,9 @@
 import { pool } from "@/lib/db/client";
 import { deriveRivalryMetrics } from "@/lib/analytics/metrics";
-import { BOUNTY_BOARD_IDS, PERIODS, SUBJECTS } from "@/lib/ingestion/config";
-export { BOARD_LABELS } from "@/lib/constants";
+import { GCW_BOARD_IDS, PERIODS, SUBJECTS, TRACKED_BOARD_IDS } from "@/lib/ingestion/config";
+export { ALL_BOARD_LABELS, BOARD_LABELS, GCW_BOARD_FACTIONS, GCW_BOARD_LABELS } from "@/lib/constants";
 
-export const isBoard = (value: string): value is (typeof BOUNTY_BOARD_IDS)[number] => BOUNTY_BOARD_IDS.includes(value as (typeof BOUNTY_BOARD_IDS)[number]);
+export const isBoard = (value: string): value is (typeof TRACKED_BOARD_IDS)[number] => TRACKED_BOARD_IDS.includes(value as (typeof TRACKED_BOARD_IDS)[number]);
 export const isPeriod = (value: string): value is (typeof PERIODS)[number] => PERIODS.includes(value as (typeof PERIODS)[number]);
 export const isSubject = (value: string): value is (typeof SUBJECTS)[number] => SUBJECTS.includes(value as (typeof SUBJECTS)[number]);
 
@@ -501,6 +501,90 @@ export async function searchEntities(q: string, limit = 20) {
   return result.rows;
 }
 
+// GCW correlation: latest observation per (board, weekly period) for one
+// participant, newest period first, with the all-time best rank per board.
+// score is GCW points; score_raw is the source's faction-share percent string.
+async function getGcwStandings(participantId: string) {
+  const standings = await pool.query(
+    `WITH gcw AS (
+        SELECT s.leaderboard_id,lp.starts_at,lp.ends_at,lp.source_period_key,
+          e.rank,e.score::float8 AS score,e.score_raw,s.total_score::float8 AS total_score,
+          s.source_fetched_at,
+          row_number() OVER (PARTITION BY s.leaderboard_id,lp.id ORDER BY s.observed_at DESC) AS rn,
+          min(e.rank) OVER (PARTITION BY s.leaderboard_id) AS best_rank
+        FROM leaderboard_entries e
+        JOIN leaderboard_snapshots s ON s.id=e.snapshot_id
+        JOIN leaderboard_periods lp ON lp.id=s.period_id
+        WHERE e.participant_id=$1 AND s.leaderboard_id = ANY($2::text[])
+      )
+      SELECT leaderboard_id,starts_at,ends_at,source_period_key,rank,score,score_raw,total_score,
+        CASE WHEN total_score>0 THEN score/total_score ELSE NULL END AS share,
+        source_fetched_at,best_rank
+      FROM gcw WHERE rn=1 ORDER BY leaderboard_id,starts_at DESC LIMIT 24`,
+    [participantId, [...GCW_BOARD_IDS]],
+  );
+  return standings.rows;
+}
+
+// All-time GCW weekly victory counts (guild/city subjects only; the source
+// wins feed has no player wins).
+async function getGcwWins(participantId: string) {
+  const wins = await pool.query(
+    `SELECT DISTINCT ON (leaderboard_id) leaderboard_id,wins,rank,observed_at
+     FROM leaderboard_wins
+     WHERE participant_id=$1 AND leaderboard_id = ANY($2::text[])
+     ORDER BY leaderboard_id,observed_at DESC`,
+    [participantId, [...GCW_BOARD_IDS]],
+  );
+  return wins.rows;
+}
+
+// Officers' Salute correlation: the player's row in the latest archived
+// registry snapshot per faction (players hold one commission, but a faction
+// switch can briefly leave rows in both — take the newest observation).
+async function getOfficerSalute(participantId: string) {
+  const rows = await pool.query(
+    `WITH latest AS (
+        SELECT DISTINCT ON (faction) id,faction,observed_at,source_fetched_at
+        FROM gcw_officer_snapshots ORDER BY faction,observed_at DESC
+      )
+      SELECT l.faction,l.observed_at,l.source_fetched_at,
+        e.rank_index,e.rank_name,e.faction_name,e.profession,
+        e.current_gcw_points::float8 AS current_gcw_points,
+        e.current_pvp_kills::float8 AS current_pvp_kills,
+        e.lifetime_gcw_points::float8 AS lifetime_gcw_points,
+        e.lifetime_pvp_kills::float8 AS lifetime_pvp_kills
+      FROM latest l JOIN gcw_officer_entries e ON e.snapshot_id=l.id
+      WHERE e.participant_id=$1
+      ORDER BY l.observed_at DESC LIMIT 1`,
+    [participantId],
+  );
+  return rows.rows[0] ?? null;
+}
+
+// Guild officer corps: commissioned members (rank 7+) of this guild in the
+// latest registry snapshots, by roster abbreviation.
+async function getOfficerCorps(abbreviation: string | null) {
+  if (!abbreviation) return { commissioned: 0, enlisted: 0, top: [] };
+  const rows = await pool.query(
+    `WITH latest AS (
+        SELECT DISTINCT ON (faction) id FROM gcw_officer_snapshots ORDER BY faction,observed_at DESC
+      )
+      SELECT e.participant_id,e.name,e.rank_index,e.rank_name,e.faction_name,
+        e.current_gcw_points::float8 AS current_gcw_points
+      FROM latest l JOIN gcw_officer_entries e ON e.snapshot_id=l.id
+      WHERE lower(e.guild_abbreviation)=lower($1)
+      ORDER BY e.rank_index DESC,e.current_gcw_points DESC`,
+    [abbreviation],
+  );
+  const commissioned = rows.rows.filter((row) => Number(row.rank_index) >= 7);
+  return {
+    commissioned: commissioned.length,
+    enlisted: rows.rows.length - commissioned.length,
+    top: commissioned.slice(0, 5),
+  };
+}
+
 export async function getParticipant(id: string, expectedType?: "player" | "guild" | "city") {
   if (!isUuid(id)) return null;
   const entity = await pool.query(`SELECT p.*,guild.id AS guild_id FROM participants p
@@ -511,12 +595,20 @@ export async function getParticipant(id: string, expectedType?: "player" | "guil
   const history = await pool.query(`SELECT s.leaderboard_id,s.subject,s.source_fetched_at,lp.starts_at,lp.ends_at,e.rank,e.score::float8,e.score_raw
       FROM leaderboard_entries e JOIN leaderboard_snapshots s ON s.id=e.snapshot_id JOIN leaderboard_periods lp ON lp.id=s.period_id
       WHERE e.participant_id=$1 ORDER BY s.source_fetched_at DESC LIMIT 200`, [id]);
-  if (participant.participant_type === "city") return { participant, history: history.rows, encounters: [], opponents: [], rivalries: [], hunterSummary: null, targetSummary: null, dailyActivity: [], guildCompetition: null };
-  if (participant.participant_type === "guild") {
-    const guildCompetition = await getGuildProfileData(id, participant.guild_abbreviation);
-    return { participant, history: history.rows, encounters: [], opponents: [], rivalries: [], hunterSummary: null, targetSummary: null, dailyActivity: [], guildCompetition };
+  if (participant.participant_type === "city") {
+    const [gcwStandings, gcwWins] = await Promise.all([getGcwStandings(id), getGcwWins(id)]);
+    return { participant, history: history.rows, encounters: [], opponents: [], rivalries: [], hunterSummary: null, targetSummary: null, dailyActivity: [], guildCompetition: null, gcwStandings, gcwWins, officerSalute: null, officerCorps: null };
   }
-  const [encounters, opponents, hunterSummary, targetSummary, dailyActivity, rivalries] = await Promise.all([
+  if (participant.participant_type === "guild") {
+    const [guildCompetition, gcwStandings, gcwWins, officerCorps] = await Promise.all([
+      getGuildProfileData(id, participant.guild_abbreviation),
+      getGcwStandings(id),
+      getGcwWins(id),
+      getOfficerCorps(participant.guild_abbreviation),
+    ]);
+    return { participant, history: history.rows, encounters: [], opponents: [], rivalries: [], hunterSummary: null, targetSummary: null, dailyActivity: [], guildCompetition, gcwStandings, gcwWins, officerSalute: null, officerCorps };
+  }
+  const [encounters, opponents, hunterSummary, targetSummary, dailyActivity, rivalries, gcwStandings, officerSalute] = await Promise.all([
     pool.query(`SELECT be.id,be.event_at,be.outcome,be.hunter_name,be.target_name,be.credits,
       hunter.id AS hunter_participant_id,target.id AS target_participant_id
       FROM bounty_encounters be
@@ -548,9 +640,12 @@ export async function getParticipant(id: string, expectedType?: "player" | "guil
       coalesce(sum(credits) FILTER(WHERE outcome='KILL'),0)::float8 AS credits
       FROM bounty_encounters WHERE lower(hunter_name)=lower($1) GROUP BY 1 ORDER BY 1`, [participant.current_name]),
     getHunterRivalries(participant.current_name),
+    getGcwStandings(id),
+    getOfficerSalute(id),
   ]);
   return { participant, history: history.rows, encounters: encounters.rows, opponents: opponents.rows,
-    rivalries, hunterSummary: hunterSummary.rows[0], targetSummary: targetSummary.rows[0], dailyActivity: dailyActivity.rows, guildCompetition: null };
+    rivalries, hunterSummary: hunterSummary.rows[0], targetSummary: targetSummary.rows[0], dailyActivity: dailyActivity.rows, guildCompetition: null,
+    gcwStandings, gcwWins: [], officerSalute, officerCorps: null };
 }
 
 export async function getAdminHealth() {

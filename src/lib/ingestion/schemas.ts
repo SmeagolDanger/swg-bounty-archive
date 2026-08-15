@@ -23,7 +23,9 @@ export const leaderboardEntrySchema = z.object({
   participantId: z.string().min(1),
   name: z.string(),
   score: z.number().finite(),
-  scoreRaw: z.string().regex(/^-?\d+(?:\.\d+)?$/),
+  // RAW/CREDITS boards send a decimal string; GCW (PERCENT) boards send the
+  // share as a percent string like "7.8584846559953885%".
+  scoreRaw: z.string().regex(/^-?\d+(?:\.\d+)?%?$/),
   guildAbbreviation: nullableText,
   faction: nullableText,
   planet: nullableText,
@@ -66,6 +68,35 @@ export const winsSchema = z.object({
   guildWins: z.array(winEntrySchema),
   fetchedAt: isoTimestamp,
 }).loose();
+
+export const officerEntrySchema = z.object({
+  oid: z.string().min(1),
+  name: z.string(),
+  factionName: z.string().min(1),
+  rankIndex: z.number().int().min(1),
+  rankName: z.string().min(1),
+  currentGcwPoints: z.number().int().nonnegative(),
+  currentPvpKills: z.number().int().nonnegative(),
+  lifetimeGcwPoints: z.number().int().nonnegative(),
+  lifetimePvpKills: z.number().int().nonnegative(),
+  profession: nullableText,
+  guildName: nullableText,
+  guildAbbreviation: nullableText,
+  residentPlanet: nullableText,
+  residentCityName: nullableText,
+}).loose();
+
+export const officersSchema = z.object({
+  faction: z.enum(["IMPERIAL", "REBEL"]),
+  officers: z.array(officerEntrySchema),
+  totalResults: z.number().int().nonnegative(),
+  fetchedAt: isoTimestamp,
+}).loose().superRefine((value, context) => {
+  const ids = value.officers.map((officer) => officer.oid);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["officers"], message: "Duplicate officer identity in source response" });
+  }
+});
 
 export const encounterSchema = z.object({
   timestamp: isoTimestamp,
