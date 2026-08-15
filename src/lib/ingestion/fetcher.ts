@@ -39,7 +39,11 @@ export async function fetchJson(url: string, options: FetchOptions = {}): Promis
         try { payload = JSON.parse(text); }
         catch { payload = { unparsedBody: text.slice(0, 20_000) }; }
       }
-      if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+      // Cloudflare's managed challenge (cf-mitigated: challenge) is scored
+      // per-request, so an identical retry moments later frequently passes.
+      // Genuine 403s (no challenge marker) are still returned immediately.
+      const challenged = response.status === 403 && response.headers.get("cf-mitigated") === "challenge";
+      if ((response.status === 429 || response.status >= 500 || challenged) && attempt < maxRetries) {
         const retryAfter = Number(response.headers.get("retry-after"));
         await delay(Number.isFinite(retryAfter) ? retryAfter * 1_000 : Math.min(1_000 * 2 ** attempt, 15_000));
         continue;
