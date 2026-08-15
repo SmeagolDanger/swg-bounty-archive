@@ -1,9 +1,19 @@
 import { pool } from "@/lib/db/client";
 import { deriveRivalryMetrics } from "@/lib/analytics/metrics";
-import { GCW_BOARD_IDS, PERIODS, SUBJECTS, TRACKED_BOARD_IDS } from "@/lib/ingestion/config";
+import { BOUNTY_BOARD_IDS, GCW_BOARD_IDS, PERIODS, SUBJECTS, TRACKED_BOARD_IDS } from "@/lib/ingestion/config";
 export { ALL_BOARD_LABELS, BOARD_LABELS, GCW_BOARD_FACTIONS, GCW_BOARD_LABELS } from "@/lib/constants";
 
 export const isBoard = (value: string): value is (typeof TRACKED_BOARD_IDS)[number] => TRACKED_BOARD_IDS.includes(value as (typeof TRACKED_BOARD_IDS)[number]);
+
+// GCW boards and the officer registries share the participants table, so
+// "tracked" counts must stay scoped to participants observed on a bounty
+// board (entries or wins) or they inflate with GCW-only players/guilds/cities.
+const BOUNTY_BOARD_SQL_LIST = BOUNTY_BOARD_IDS.map((id) => `'${id}'`).join(",");
+const countBountyParticipants = (type: "player" | "guild" | "city") =>
+  `(SELECT count(*)::int FROM participants bp WHERE bp.participant_type='${type}' AND (
+      EXISTS (SELECT 1 FROM leaderboard_entries be_e JOIN leaderboard_snapshots be_s ON be_s.id=be_e.snapshot_id
+              WHERE be_e.participant_id=bp.id AND be_s.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST}))
+      OR EXISTS (SELECT 1 FROM leaderboard_wins be_w WHERE be_w.participant_id=bp.id AND be_w.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST}))))`;
 export const isPeriod = (value: string): value is (typeof PERIODS)[number] => PERIODS.includes(value as (typeof PERIODS)[number]);
 export const isSubject = (value: string): value is (typeof SUBJECTS)[number] => SUBJECTS.includes(value as (typeof SUBJECTS)[number]);
 
@@ -27,9 +37,9 @@ export async function getDashboard() {
       (SELECT count(*)::int FROM bounty_encounters) AS encounters,
       (SELECT count(*)::int FROM bounty_encounters WHERE event_at >= date_trunc('day',now())) AS encounters_today,
       (SELECT count(*)::int FROM bounty_encounters WHERE event_at >= now()-interval '7 days') AS encounters_week,
-      (SELECT count(*)::int FROM participants WHERE participant_type='player') AS hunters,
-      (SELECT count(*)::int FROM participants WHERE participant_type='guild') AS guilds,
-      (SELECT count(*)::int FROM participants WHERE participant_type='city') AS cities,
+      ${countBountyParticipants("player")} AS hunters,
+      ${countBountyParticipants("guild")} AS guilds,
+      ${countBountyParticipants("city")} AS cities,
       (SELECT min(event_at) FROM bounty_encounters) AS history_start`),
     pool.query(`SELECT be.id,be.event_at,be.outcome,be.hunter_name,be.target_name,be.credits,
       hunter.id AS hunter_participant_id,target.id AS target_participant_id
@@ -171,7 +181,7 @@ export async function getHunterDirectory(filters: HunterDirectoryFilters = {}) {
     LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='guild' AND lower(guild_abbreviation)=lower(nullif(p.guild_abbreviation,'')) ORDER BY last_seen_at DESC LIMIT 1) guild ON true
     ${where} ORDER BY ${order} LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
   const summary = await pool.query(`SELECT
-      (SELECT count(*)::int FROM participants WHERE participant_type='player') AS leaderboard_hunters,
+      ${countBountyParticipants("player")} AS leaderboard_hunters,
       (SELECT count(DISTINCT lower(hunter_name))::int FROM bounty_encounters) AS encounter_hunters,
       (SELECT count(DISTINCT lower(target_name))::int FROM bounty_encounters) AS encounter_targets,
       (SELECT count(*)::int FROM bounty_encounters) AS encounters,
@@ -187,9 +197,9 @@ export async function getArchiveStats() {
       (SELECT count(DISTINCT lower(hunter_name))::int FROM bounty_encounters) AS encounter_hunters,
       (SELECT count(DISTINCT lower(target_name))::int FROM bounty_encounters) AS encounter_targets,
       (SELECT count(DISTINCT actor) FROM (SELECT lower(hunter_name) actor FROM bounty_encounters UNION SELECT lower(target_name) FROM bounty_encounters) actors)::int AS unique_names,
-      (SELECT count(*)::int FROM participants WHERE participant_type='player') AS leaderboard_hunters,
-      (SELECT count(*)::int FROM participants WHERE participant_type='guild') AS guilds,
-      (SELECT count(*)::int FROM participants WHERE participant_type='city') AS cities,
+      ${countBountyParticipants("player")} AS leaderboard_hunters,
+      ${countBountyParticipants("guild")} AS guilds,
+      ${countBountyParticipants("city")} AS cities,
       (SELECT min(event_at) FROM bounty_encounters) AS history_start,
       (SELECT max(event_at) FROM bounty_encounters) AS history_end`),
     pool.query(`SELECT min(be.hunter_name) AS hunter_name,count(*)::int AS encounters,count(*) FILTER(WHERE be.outcome='KILL')::int AS wins,
