@@ -327,7 +327,13 @@ async function recordSchemaAndUnknownFields(
   const prior = previous.rows[0];
   if (inserted.rows[0]?.inserted && prior && prior.signature !== shape.signature) {
     const diff = diffSchema(prior.structure, shape.structure);
-    const meaningful = diff.addedPaths.length > 0 || diff.removedPaths.length > 0 || diff.changedTypes.length > 0;
+    // Alert only when the source exhibits something never observed for this
+    // scope: a new path, a vanished path, or a type outside the prior union.
+    // Narrowing-only changes (e.g. null|string -> string) are sampling
+    // artifacts — freshly reset weekly boards simply lack the nullable
+    // variants — and are recorded as known signatures without alarming.
+    const widenedTypes = diff.changedTypes.filter((change) => change.to.some((type) => !change.from.includes(type)));
+    const meaningful = diff.addedPaths.length > 0 || diff.removedPaths.length > 0 || widenedTypes.length > 0;
     if (!meaningful) return issues;
     const details = {
       sourceKey: item.sourceKey,
