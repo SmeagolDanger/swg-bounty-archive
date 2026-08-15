@@ -33,27 +33,35 @@ suite("schema narrowing stays silent at weekly rollover", () => {
     await pool.end();
   });
 
-  it("does not alarm on a narrowed union, still alarms on widening", async () => {
+  it("does not alarm on narrowed or historically-known unions, still alarms on true widening", async () => {
     const run = await pool.query<{ id: string }>("INSERT INTO ingestion_runs(run_type) VALUES('ONCE') RETURNING id");
     runId = run.rows[0].id;
 
-    // Baseline: guildAbbreviation observed as null|string across members.
+    // Baseline: guildAbbreviation and planet observed as null|string.
     await ingestFixture(runId, "leaderboard_wins", "wins", winsPayload([
       { rank: 1, participantId: pid(1), name: "Narrow A", wins: 1, guildAbbreviation: null, faction: "REBEL", planet: "corellia" },
-      { rank: 2, participantId: pid(2), name: "Narrow B", wins: 1, guildAbbreviation: "ABC", faction: "REBEL", planet: "corellia" },
+      { rank: 2, participantId: pid(2), name: "Narrow B", wins: 1, guildAbbreviation: "ABC", faction: "REBEL", planet: null },
     ]), { case: `narrow-baseline-${suffix}` });
 
     const warning = vi.spyOn(log, "warn");
 
-    // Narrowing only: every member carries the string variant.
+    // Narrowing only: every member carries the string variant (fresh board).
     await ingestFixture(runId, "leaderboard_wins", "wins", winsPayload([
       { rank: 3, participantId: pid(3), name: "Narrow C", wins: 2, guildAbbreviation: "DEF", faction: "REBEL", planet: "corellia" },
     ]), { case: `narrow-only-${suffix}` });
     expect(warning.mock.calls.filter(([event]) => event === "source_schema_changed")).toHaveLength(0);
 
-    // Widening: faction shows null, a type never observed on that path.
+    // Refill: planet returns to null|string — a NEW signature, but null was
+    // observed on that path before the narrowed sample. Must stay silent.
     await ingestFixture(runId, "leaderboard_wins", "wins", winsPayload([
-      { rank: 4, participantId: pid(4), name: "Narrow D", wins: 3, guildAbbreviation: "GHI", faction: null, planet: "corellia" },
+      { rank: 4, participantId: pid(4), name: "Narrow D", wins: 3, guildAbbreviation: "GHI", faction: "REBEL", planet: "corellia" },
+      { rank: 5, participantId: pid(5), name: "Narrow E", wins: 3, guildAbbreviation: "JKL", faction: "REBEL", planet: null },
+    ]), { case: `refill-${suffix}` });
+    expect(warning.mock.calls.filter(([event]) => event === "source_schema_changed")).toHaveLength(0);
+
+    // True widening: faction shows null, a type never observed on that path.
+    await ingestFixture(runId, "leaderboard_wins", "wins", winsPayload([
+      { rank: 6, participantId: pid(6), name: "Narrow F", wins: 4, guildAbbreviation: "MNO", faction: null, planet: "corellia" },
     ]), { case: `widen-${suffix}` });
     expect(warning.mock.calls.filter(([event]) => event === "source_schema_changed")).toHaveLength(1);
 

@@ -315,7 +315,7 @@ async function recordSchemaAndUnknownFields(
   const previous = await pool.query<{ signature: string; structure: SchemaStructure }>(
     `SELECT signature,structure FROM schema_signatures
      WHERE source_id=$1 AND scope_key=$2 AND ($3::boolean=false OR comparable) AND structure <> '{}'::jsonb
-     ORDER BY last_seen_at DESC LIMIT 1`,
+     ORDER BY last_seen_at DESC`,
     [sourceId, scopeKey, comparable],
   );
   const inserted = await pool.query<{ inserted: boolean }>(
@@ -326,36 +326,48 @@ async function recordSchemaAndUnknownFields(
   );
   const prior = previous.rows[0];
   if (inserted.rows[0]?.inserted && prior && prior.signature !== shape.signature) {
-    const diff = diffSchema(prior.structure, shape.structure);
     // Alert only when the source exhibits something never observed for this
-    // scope: a new path, a vanished path, or a type outside the prior union.
-    // Narrowing-only changes (e.g. null|string -> string) are sampling
-    // artifacts — freshly reset weekly boards simply lack the nullable
-    // variants — and are recorded as known signatures without alarming.
+    // scope across ALL known signatures: a brand-new path, a type never seen
+    // on a path, or the disappearance of a path every prior variant carried.
+    // Weekly-reset boards alternate between narrowed samples (small boards
+    // whose nullable fields carry no nulls) and the refilled shapes, minting
+    // new signature combinations that contain nothing new — those are
+    // recorded silently as known variants.
+    const knownStructure: SchemaStructure = {};
+    const pathPresence = new Map<string, number>();
+    for (const row of previous.rows) {
+      for (const [path, types] of Object.entries(row.structure)) {
+        knownStructure[path] = [...new Set([...(knownStructure[path] ?? []), ...types])];
+        pathPresence.set(path, (pathPresence.get(path) ?? 0) + 1);
+      }
+    }
+    const diff = diffSchema(knownStructure, shape.structure);
+    const removedEverywhere = diff.removedPaths.filter((path) => pathPresence.get(path) === previous.rows.length);
     const widenedTypes = diff.changedTypes.filter((change) => change.to.some((type) => !change.from.includes(type)));
-    const meaningful = diff.addedPaths.length > 0 || diff.removedPaths.length > 0 || widenedTypes.length > 0;
+    const meaningful = diff.addedPaths.length > 0 || removedEverywhere.length > 0 || widenedTypes.length > 0;
     if (!meaningful) return issues;
+    const reported = { addedPaths: diff.addedPaths, removedPaths: removedEverywhere, changedTypes: widenedTypes };
     const details = {
       sourceKey: item.sourceKey,
       scopeKey,
       previousSignature: prior.signature,
       newSignature: shape.signature,
-      ...diff,
+      ...reported,
       parserVersion: PARSER_VERSION,
     };
     const quality = await pool.query(
       `INSERT INTO data_quality_events(severity,event_type,entity_type,entity_key,details,source_ingestion_id)
        VALUES('WARNING','SWG_API_SCHEMA_CHANGE','api_source',$1,$2::jsonb,$3)
        ON CONFLICT DO NOTHING RETURNING id`,
-      [`${item.sourceKey}:${sha256(diff)}`, json(details), ingestionId],
+      [`${item.sourceKey}:${sha256(reported)}`, json(details), ingestionId],
     );
     if (quality.rowCount) {
       issues.push({ event: "source_integrity_failed", reason: "source_schema_changed" });
       log.warn("source_schema_changed", {
         run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, endpoint: item.path, status: "partial",
         parser_version: PARSER_VERSION, scope_key: scopeKey, previous_signature: prior.signature,
-        schema_signature: shape.signature, missing_fields: diff.removedPaths, unexpected_fields: diff.addedPaths,
-        changed_types: diff.changedTypes, message: "SWG Legends response structure changed",
+        schema_signature: shape.signature, missing_fields: reported.removedPaths, unexpected_fields: reported.addedPaths,
+        changed_types: reported.changedTypes, message: "SWG Legends response structure changed",
       });
     }
   }
