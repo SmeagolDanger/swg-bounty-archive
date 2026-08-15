@@ -39,7 +39,7 @@ const endpoints: Endpoint[] = [
     path: "/api/hunters/{id}",
     summary: "Full dossier for one player identity (UUID from other endpoints).",
     parameters: [["id", "participant UUID (path segment)"]],
-    returns: "{ participant, history, encounters, opponents, rivalries, hunterSummary, targetSummary, dailyActivity } — 404 when unknown",
+    returns: "{ participant, history, encounters, opponents, rivalries, hunterSummary, targetSummary, dailyActivity, gcwStandings, officerSalute } — gcwStandings holds the latest observation per GCW board per weekly period (rank, points, faction-share percent, best rank); officerSalute is the player's row in the current Officers' Salute registry or null; 404 when unknown",
   },
   {
     path: "/api/guilds",
@@ -54,11 +54,11 @@ const endpoints: Endpoint[] = [
     path: "/api/leaderboards",
     summary: "One archived source leaderboard snapshot with per-entry rank movement.",
     parameters: [
-      ["board", "BOUNTY_HUNTER_GROUND_VALUE | BOUNTY_HUNTER_SPACE_VALUE | BOUNTY_HUNTER_UNIQUE_KILLS | BOUNTY_HUNTER_TOTAL_KILLS (required)"],
+      ["board", "BOUNTY_HUNTER_GROUND_VALUE | BOUNTY_HUNTER_SPACE_VALUE | BOUNTY_HUNTER_UNIQUE_KILLS | BOUNTY_HUNTER_TOTAL_KILLS | GCW_IMPERIAL | GCW_REBEL (required)"],
       ["period", "CURRENT | PREVIOUS_1 | PREVIOUS_2 (default CURRENT)"],
       ["subject", "player | guild | city (default player)"],
     ],
-    returns: "{ snapshot, entries } — score is the source display value, score_raw the raw source value (credits on value boards)",
+    returns: "{ snapshot, entries } — score is the source display value, score_raw the raw source value (credits on value boards; a faction-share percent string on GCW boards)",
   },
   {
     path: "/api/rivalries",
@@ -81,7 +81,7 @@ const endpoints: Endpoint[] = [
     summary: "Search the lossless archive of original SWG Legends JSON responses.",
     parameters: [
       ["q", "full-text search over payload keys and values (websearch syntax)"],
-      ["source", "board_catalog | bounty_activity | leaderboard | leaderboard_wins"],
+      ["source", "board_catalog | bounty_activity | leaderboard | leaderboard_wins | gcw_officers"],
       ["status", "PROCESSED | FAILED | HTTP_ERROR | RECEIVED"],
       ["from / to", "YYYY-MM-DD day bounds on response time, interpreted in tz"],
       ["tz", "IANA timezone for day bounds (default UTC)"],
