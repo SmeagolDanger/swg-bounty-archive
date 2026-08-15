@@ -48,7 +48,11 @@ services:
 
   web:
     <<: *app-image
-    environment: *app-env
+    environment: &observed-app-env
+      <<: *app-env
+      AXIOM_TOKEN: ${AXIOM_TOKEN:-}
+      AXIOM_DATASET: ${AXIOM_DATASET:-}
+      AXIOM_ENVIRONMENT: ${AXIOM_ENVIRONMENT:-production}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -64,10 +68,7 @@ services:
   worker:
     <<: *app-image
     command: npm run worker
-    environment:
-      <<: *app-env
-      BETTERSTACK_HEARTBEAT_URL: ${BETTERSTACK_HEARTBEAT_URL:-}
-      BETTERSTACK_HEARTBEAT_TIMEOUT_MS: ${BETTERSTACK_HEARTBEAT_TIMEOUT_MS:-3000}
+    environment: *observed-app-env
     depends_on:
       migrate:
         condition: service_completed_successfully

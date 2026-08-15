@@ -12,7 +12,7 @@ Data originates from [SWG Legends](https://swglegends.com/). This project is not
 - Rolling public bounty aggregate and every recent encounter observed by the collector.
 - Immutable changed-state snapshots, stable participant IDs, deterministic encounter fingerprints, database uniqueness constraints, revisions for fixed historical rows, and schema-change alerts.
 - Resumable public-history backfill, conservative polling worker, retry/backoff, timeouts, rate-limit handling, graceful shutdown, heartbeat health check, reconciliation, and diagnostics.
-- Optional Better Stack observability through low-volume structured JSON logs, failure-isolated collector heartbeats, typed schema diffs, and external health monitoring.
+- Optional Axiom observability through sanitized structured events, background batching, explicit partial-ingestion detection, typed schema diffs, and provider-neutral health monitoring.
 - Encounter-archive home page with search/filter/pagination, leaderboards, hunter comparison, rivalry intelligence and timelines, guild competition and current-roster analytics, player/guild/city dossiers, charts, global trigram search, public raw-response search, protected ingestion console, and raw payload viewer.
 - Documented read-only public JSON API with CORS for community projects, per-IP rate limiting, and cache headers — see [docs/public-api.md](docs/public-api.md) and `/api-docs` on the running site.
 - Unit tests plus a PostgreSQL integration test that imports the same fixture 100 times concurrently.
@@ -24,6 +24,7 @@ Data originates from [SWG Legends](https://swglegends.com/). This project is not
 flowchart LR
   SWG[Public SWG Legends JSON] -->|conservative GET polling| W[TypeScript worker]
   W -->|archive first| R[(Raw api_ingestions)]
+  W -.->|sanitized operational events| A[Axiom optional]
   R --> V[Zod validation + schema signature]
   V --> N[(Immutable normalized history)]
   N --> Q[Next.js application API]
@@ -63,7 +64,7 @@ Open <http://localhost:3017> (or `APP_PORT`). The independent worker performs an
 
 All public sources are polled on one synchronized five-minute start-to-start cadence by default. The worker mirrors its active cadence into the source schedule records shown by the operations console.
 
-PostgreSQL remains the authoritative audit store. Optional external monitoring receives compact operational events only—never raw SWG payloads or secrets. See [docs/monitoring.md](docs/monitoring.md) for Better Stack log shipping, heartbeat setup, alert thresholds, safe testing, and the schema-change investigation runbook.
+PostgreSQL remains the authoritative audit store. Optional Axiom monitoring receives compact operational events only—never raw SWG payloads or secrets. See [docs/monitoring.md](docs/monitoring.md) for dataset/token setup, APL queries, exact monitor thresholds, Discord notification setup, safe testing, and the schema-change investigation runbook.
 
 To see logs:
 
@@ -122,9 +123,9 @@ See [.env.example](.env.example). Important controls:
 - `PUBLIC_API_RATE_LIMIT_PER_MINUTE`: per-process public API limit.
 - User-facing dates are stored as UTC `timestamptz` values and displayed in each visitor's browser timezone.
 - `BACKUP_DIR` / `BACKUP_RETENTION_DAYS`: backup path and optional retention. Zero keeps backups forever.
-- `BETTERSTACK_HEARTBEAT_URL`: optional secret collector heartbeat URL; blank disables external heartbeats.
-- `BETTERSTACK_HEARTBEAT_TIMEOUT_MS`: short failure-isolation timeout, default 3000 ms.
-- `BETTERSTACK_SOURCE_TOKEN` / `BETTERSTACK_INGESTING_HOST`: optional host log-shipper values; the application does not consume them.
+- `AXIOM_TOKEN`: optional server-side ingest token; requires `AXIOM_DATASET` and is never exposed to browser code.
+- `AXIOM_DATASET`: Axiom Events dataset, recommended `outer-rim-ledger-production` in production.
+- `AXIOM_ENVIRONMENT`: event environment label, normally `production`, `staging`, or `development`.
 - `HEALTH_WORKER_STALE_SECONDS`: public health staleness threshold, default 900 seconds.
 
 No real credentials belong in source control.
@@ -170,7 +171,7 @@ Applied migrations are checksum-protected. Editing an already-applied migration 
 - Admin returns 503: configure `ADMIN_USERNAME` and a bcrypt `ADMIN_PASSWORD_HASH`.
 - Dashboard is empty: inspect worker logs, run `npm run ingest:once`, then check the protected operations console.
 - Schema-change warning: compare the linked raw payload with the prior signature and update the Zod parser without deleting raw history.
-- Better Stack unavailable: ingestion continues; inspect local Docker JSON logs and PostgreSQL operations events while the shipper or heartbeat service recovers.
+- Axiom unavailable: ingestion continues; inspect local Docker JSON logs, `/api/health`, and PostgreSQL operations events while hosted delivery recovers.
 - Partial run: transient endpoint failures are isolated and retained; the next idempotent cycle retries safely.
 - Encounter gaps after downtime: the upstream public response has only 12 recent rows, so older missed events cannot be recovered from the discovered API.
 - Migration checksum error: restore the original migration file and express the change as a new migration.

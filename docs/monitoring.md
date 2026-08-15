@@ -1,133 +1,267 @@
-# Better Stack monitoring and alerting
+# Axiom monitoring and alerting
 
-Outer Rim Ledger treats PostgreSQL as its permanent audit and history store. Better Stack is an optional external layer for low-volume structured logs, collector heartbeats, uptime checks, and alerts. Collection does not call the Better Stack Logs API directly, and a Better Stack outage cannot stop or roll back ingestion.
+Outer Rim Ledger uses Axiom as an optional hosted operational log provider. PostgreSQL remains the permanent authority for raw responses, ingestion runs, errors, schema signatures, revisions, and data-quality events. Axiom is not business-data storage and an Axiom outage never rolls back or fails a valid ingestion.
 
-## What is stored where
+The integration uses the current [`@axiomhq/js`](https://axiom.co/docs/guides/javascript) batch client. Every event is written as sanitized JSON to stdout or stderr first and then queued for Axiom. The SDK flushes in the background; worker and one-shot collector shutdowns allow a short best-effort flush. Missing credentials, authentication failures, timeouts, and Axiom outages produce local warnings only.
 
-PostgreSQL retains every raw SWG response, response metadata, payload hash, typed schema signature, normalized immutable history, revisions, ingestion errors, and data-quality events. A parser failure is recorded only after the raw response has committed.
+## Dataset and server-side configuration
 
-Schema baselines are separated by stable request path, including deterministic query parameters. This prevents legitimate nullable-field and empty-result differences between leaderboard variants from producing false schema-change alerts. Database events are still deduplicated by source and structural diff, so the same upstream change appearing across many leaderboard requests produces one unresolved alert rather than a flood.
+Create an **Events** dataset in **Settings → Datasets and views**. Recommended names:
 
-An empty array proves that the field is still an array but provides no evidence about its member structure. Its raw signature is retained, but it is marked structurally inconclusive and neither replaces the last comparable baseline nor emits a removal alert for unseen members.
+- production: `outer-rim-ledger-production`
+- development/staging: `outer-rim-ledger-development`
 
-Application stdout/stderr contains compact JSON operational events: one run start, one run summary, exceptional request/parser/schema events, and worker lifecycle events. Logs deliberately exclude raw payloads, response/request headers, database URLs, credentials, cookies, and telemetry tokens. Better Stack receives only these operational logs when an external Docker log shipper is configured.
-
-## 1. Create a log source and ship Docker output
-
-In Better Stack, open **Telemetry → Sources → Connect source**, create a Docker source named `Outer Rim Ledger production`, then copy its source token and ingesting host. Store them outside Git; the example environment files provide blank `BETTERSTACK_SOURCE_TOKEN` and `BETTERSTACK_INGESTING_HOST` placeholders.
-
-The application always emits JSON to standard stdout/stderr. On the VPS, use Better Stack's host-level Vector setup so network retries, buffering, and backpressure stay outside the collector process:
-
-```bash
-export SOURCE_TOKEN='paste-the-source-token-here'
-curl -sSL "https://telemetry.betterstack.com/setup-vector/docker/$SOURCE_TOKEN" \
-  -o /tmp/setup-vector.sh
-less /tmp/setup-vector.sh
-sudo bash /tmp/setup-vector.sh
-sudo usermod -a -G docker vector
-sudo systemctl restart vector
-```
-
-Verify in **Live tail**. Filter to the `outer-rim-ledger-worker` container and keep `debug` logs excluded. The worker emits no per-row and no routine per-request success logs, which keeps normal volume to roughly two run events plus one heartbeat every five minutes. The source token and ingesting host are shipper configuration; they are intentionally not passed into the application container.
-
-To configure Vector manually, use an HTTP sink pointed at `https://$BETTERSTACK_INGESTING_HOST/` with bearer token `$BETTERSTACK_SOURCE_TOKEN`, JSON encoding, gzip compression, conservative disk buffering, and a `docker_logs` source filtered to the web and worker containers.
-
-## 2. Configure the collector heartbeat
-
-Create **Uptime → Heartbeats → Create heartbeat** named `Outer Rim Ledger collector`. Configure:
-
-- expected frequency: 5 minutes;
-- grace period: 4 minutes;
-- escalation: immediate for a missed heartbeat;
-- metadata: service `outer-rim-ledger`, component `collector`, severity `high`.
-
-Put the secret URL into `.env.production`:
+Create an API token that can ingest only into the selected dataset. Put these values in the server's `.env.production`; none use the `NEXT_PUBLIC_` prefix and none are exposed to browser code:
 
 ```dotenv
-BETTERSTACK_HEARTBEAT_URL=https://uptime.betterstack.com/api/v1/heartbeat/REPLACE_ME
-BETTERSTACK_HEARTBEAT_TIMEOUT_MS=3000
+AXIOM_TOKEN=xaat-REPLACE_WITH_SERVER_SIDE_INGEST_TOKEN
+AXIOM_DATASET=outer-rim-ledger-production
+AXIOM_ENVIRONMENT=production
 ```
 
-The worker sends the base URL only after a scheduled cycle finishes `SUCCEEDED`. `PARTIAL` and `FAILED` cycles call the same URL with `/fail`, using Better Stack's explicit failure semantics. Calls time out quickly; failures become local `betterstack_heartbeat_failed` warnings and are otherwise discarded. No heartbeat is sent when the URL is blank.
+Both `AXIOM_TOKEN` and `AXIOM_DATASET` are required to enable delivery. Leave both blank to use only local JSON logging and PostgreSQL audit history. Supplying only one emits `axiom_configuration_incomplete` locally.
 
-The 5-minute frequency plus 4-minute grace detects a dead or hung collector within approximately nine minutes while allowing retries and modest upstream latency. The public health endpoint independently uses a 15-minute default stale threshold (`HEALTH_WORKER_STALE_SECONDS=900`).
+## Event contract
 
-## 3. External HTTP monitor
+Every hosted event includes `timestamp`, `level`, `environment`, `service`, and `event`. Ingestion events use stable snake-case fields:
 
-Create an HTTP status monitor for:
+- identity: `run_id`, `run_type`, `source`, `source_instance`, `ingestion_id` when available;
+- state: `status` (`running`, `success`, `partial`, or `failed`), `reason`;
+- timing: `started_at`, `completed_at`, `duration_ms`;
+- counts: `expected_records`, `received_records`, `inserted_records`, `updated_records`, `unchanged_records`, `rejected_records`, `duplicate_records`;
+- failures: `error_type`, `error_message`, `http_status`, `endpoint`, and a sanitized `stack_trace` for unexpected exceptions;
+- source drift: `missing_fields`, `unexpected_fields`, `changed_types`, `schema_signature`, and `parser_version`.
 
-```text
-https://YOUR_PUBLIC_HOST/api/health
+The collector emits:
+
+- `ingestion_started`: one event when a database-backed run begins;
+- `ingestion_complete`: one final event for every requested source instance;
+- `ingestion_run_complete`: one final whole-run summary;
+- `source_schema_changed` / `source_fields_changed`: structural drift;
+- `pagination_incomplete`: declared pagination ended before the source's final page;
+- `source_validation_failed`: a `200 OK` response failed semantic validation;
+- `database_transaction_failed`: an archive/normalization transaction or audit write failed;
+- `api_http_error`, `api_rate_limited`, `api_timeout`, and `api_transport_error`;
+- `axiom_delivery_failed`, `axiom_flush_failed`, and configuration warnings are local-only to avoid recursive delivery failures.
+
+A whole run is `success` only if every source succeeds and passes integrity checks. It is `partial` when at least one source fails or is incomplete while others succeed, and `failed` when every requested source fails or the run aborts. The database keeps its existing uppercase `SUCCEEDED`, `PARTIAL`, and `FAILED` values.
+
+The current public SWG endpoints do not expose usable pagination. The collector nevertheless checks pagination metadata if it appears, and treats an incomplete declaration as `partial`. It also validates the public 12-row bounty recent-event window, the 250-row-per-faction Officers' Salute cap, required tracked boards, mandatory response sections, record schemas, duplicate identities, and known invariants.
+
+Raw payloads, response/request headers, cookies, authorization values, database URLs, passwords, tokens, and secrets are never placed in operational events.
+
+## APL investigation queries
+
+Replace the dataset name if necessary.
+
+Before creating monitors, confirm that Axiom has received at least one application event:
+
+```apl
+['outer-rim-ledger-production']
+| getschema
 ```
 
-The response contains only safe state:
+The result should include `event`, `status`, `service`, and `environment`. If `event` is absent, run the safe test under **Safe testing and operations** and then expand the query time range. Axiom validates field names against the dataset schema, so a direct `where event == ...` query fails until the field has been ingested. The monitor queries below use `column_ifexists()` so they can still be saved before the first event arrives.
 
-- `200`: web can reach PostgreSQL and the worker is starting, healthy, intentionally disabled, or reporting a recent partial run in the response body;
-- `503` with `database: unavailable`: web cannot query PostgreSQL;
-- `503` with `worker.status: stale`: neither a completed poll nor a recent initial worker heartbeat is within the configured threshold;
-- `503` with `worker.status: failed`: the latest scheduled collection failed.
+### 1. Failed ingestion
 
-No exception traces, database addresses, tokens, or credentials are returned. Use the heartbeat monitor as the faster collector-loop signal and the HTTP monitor as the independent web/database/staleness signal.
+```apl
+['outer-rim-ledger-production']
+| where event in ('ingestion_complete', 'ingestion_run_complete') and status == 'failed'
+| order by _time desc
+```
 
-## 4. Structured events and alert rules
+### 2. Partial ingestion
 
-Every event includes `timestamp`, `level`, and `event`. Relevant events also include `runId`, `ingestionId`, `sourceKey`, `endpoint`, `httpStatus`, `durationMs`, `parserVersion`, `schemaSignature`, `errorCode`, and `errorMessage`.
+```apl
+['outer-rim-ledger-production']
+| where event in ('ingestion_complete', 'ingestion_run_complete') and status == 'partial'
+| order by _time desc
+```
 
-Recommended immediate/high-priority alerts:
+### 3. Schema/source changes
 
-- any `swg_api_schema_changed`;
-- `swg_api_validation_failed` repeated at least twice in 15 minutes, or once when paired with `swg_api_schema_changed`;
-- any `ingestion_run_failed`;
-- collector heartbeat missing or explicitly failed;
-- `/api/health` returning `503` on consecutive checks.
+```apl
+['outer-rim-ledger-production']
+| where event in ('source_schema_changed', 'source_fields_changed')
+| project _time, source, run_id, status, missing_fields, unexpected_fields, changed_types, message
+| order by _time desc
+```
 
-Recommended warning alerts:
+### 4. Pagination failures
 
-- any new `swg_api_unknown_fields` (the application suppresses the same unresolved field set);
-- `ingestion_run_partial`;
-- `swg_api_http_error` or `swg_api_timeout` only after at least three occurrences across two or more distinct `runId` values in 15 minutes;
-- repeated `swg_api_transport_error` across collection cycles.
+```apl
+['outer-rim-ledger-production']
+| where event == 'pagination_incomplete'
+| project _time, source, run_id, expected_records, received_records, reason
+| order by _time desc
+```
 
-Do not page on one timeout or one upstream HTTP 500. Run summaries make it possible to escalate transport noise only when it affects a whole run.
+### 5. API errors and rate limits
 
-`swg_api_schema_changed` includes `previousSignature`, `newSignature`, `addedPaths`, `removedPaths`, and `changedTypes`. Paths inside arrays use stable `[]` notation, never numeric item indexes. Type arrays are sorted unions such as `null|string`; a new observed signature alerts only once, preventing five-minute alert repetition when known nullable shapes alternate.
+```apl
+['outer-rim-ledger-production']
+| where event in ('api_http_error', 'api_rate_limited', 'api_timeout', 'api_transport_error')
+| project _time, event, source, run_id, http_status, endpoint, error_type, error_message
+| order by _time desc
+```
 
-## 5. Safe testing
+### 6. Database failures
 
-Test log shipping before enabling paging by creating a temporary low-priority presence alert for `event = monitoring_test`, then emit a synthetic, payload-free Docker log:
+```apl
+['outer-rim-ledger-production']
+| where event == 'database_transaction_failed'
+| project _time, source, run_id, ingestion_id, reason, error_type, error_message
+| order by _time desc
+```
+
+### 7. Rejected records
+
+```apl
+['outer-rim-ledger-production']
+| where event == 'ingestion_complete' and rejected_records > 0
+| project _time, source, run_id, status, rejected_records, reason, error_message
+| order by _time desc
+```
+
+### 8. Recent whole runs
+
+```apl
+['outer-rim-ledger-production']
+| where event == 'ingestion_run_complete'
+| project _time, run_id, status, duration_ms, expected_records, received_records, inserted_records, updated_records, rejected_records, duplicate_records
+| order by _time desc
+| take 50
+```
+
+### 9. Runs for a specific source
+
+```apl
+['outer-rim-ledger-production']
+| where event == 'ingestion_complete' and source == 'bounty_activity'
+| order by _time desc
+```
+
+### 10. One run ID
+
+```apl
+['outer-rim-ledger-production']
+| where run_id == 'REPLACE_WITH_RUN_ID'
+| order by _time asc
+```
+
+### 11. Sources without a recent successful ingestion
+
+```apl
+['outer-rim-ledger-production']
+| where event == 'ingestion_complete'
+| summarize last_success=maxif(_time, status == 'success'), last_seen=max(_time) by source
+| extend minutes_since_success=datetime_diff('minute', now(), last_success)
+| where isnull(last_success) or minutes_since_success > 10
+| order by minutes_since_success desc
+```
+
+## Recommended monitors
+
+Create these under **Monitors → New monitor** and attach the Discord notifier described below. Threshold monitor queries must end with `summarize`.
+
+### Ingestion failed
+
+- Type: match monitor
+- Query:
+  ```apl
+  ['outer-rim-ledger-production']
+  | extend event_name=tostring(column_ifexists('event', '')), run_status=tostring(column_ifexists('status', ''))
+  | where event_name == 'ingestion_run_complete' and run_status == 'failed'
+  ```
+- Frequency/range: every `1` minute over `5` minutes
+
+### Ingestion partial
+
+- Type: match monitor
+- Query:
+  ```apl
+  ['outer-rim-ledger-production']
+  | extend event_name=tostring(column_ifexists('event', '')), run_status=tostring(column_ifexists('status', ''))
+  | where event_name == 'ingestion_run_complete' and run_status == 'partial'
+  ```
+- Frequency/range: every `1` minute over `5` minutes
+
+### Source/schema changed
+
+- Type: match monitor
+- Query:
+  ```apl
+  ['outer-rim-ledger-production']
+  | extend event_name=tostring(column_ifexists('event', ''))
+  | where event_name in ('source_schema_changed', 'source_fields_changed')
+  ```
+- Frequency/range: every `1` minute over `5` minutes
+
+### Pagination incomplete
+
+- Type: match monitor
+- Query:
+  ```apl
+  ['outer-rim-ledger-production']
+  | extend event_name=tostring(column_ifexists('event', ''))
+  | where event_name == 'pagination_incomplete'
+  ```
+- Frequency/range: every `1` minute over `5` minutes
+
+### Database failure
+
+- Type: match monitor
+- Query:
+  ```apl
+  ['outer-rim-ledger-production']
+  | extend event_name=tostring(column_ifexists('event', ''))
+  | where event_name == 'database_transaction_failed'
+  ```
+- Frequency/range: every `1` minute over `5` minutes
+
+### No successful ingestion within the expected interval
+
+- Type: threshold
+- Query:
+  ```apl
+  ['outer-rim-ledger-production']
+  | extend event_name=tostring(column_ifexists('event', '')), run_status=tostring(column_ifexists('status', ''))
+  | where event_name == 'ingestion_run_complete'
+  | summarize successful_runs=countif(run_status == 'success')
+  ```
+- Operator/threshold: below `1`
+- Frequency/range: every `5` minutes over `10` minutes
+- Alert on no data: on
+
+For per-source staleness, use the same settings with `event == 'ingestion_complete'`, summarize `countif(status == 'success') by source`, and enable **Notify by group**. The public `/api/health` endpoint remains an independent provider-neutral check for web, database, worker-failure, and worker-staleness state.
+
+After enough history exists, add anomaly monitors for unusually high `duplicate_records` and unusually low `received_records`, grouped by `source` in five-minute bins. Add match monitors for `api_rate_limited` and for `ingestion_complete` where `rejected_records > 0`. Baseline these warnings before paging because unchanged snapshots legitimately produce duplicates.
+
+## Discord notifier
+
+Axiom supports Discord directly; no custom bot belongs in this repository.
+
+1. In Discord, open the target channel's settings, choose **Integrations → Webhooks → New Webhook**, select the channel, and copy the webhook URL.
+2. In Axiom, open **Monitors → Manage notifiers → New notifier**.
+3. Name it `Outer Rim Ledger production`.
+4. Select **Discord Webhook**, paste the URL, and create the notifier.
+5. Edit each monitor, choose **Add notifier**, select the new Discord notifier, and save.
+6. Trigger a temporary non-paging test monitor and confirm the message includes `source`, `run_id`, `reason`, and record counts. Then remove the temporary monitor.
+
+Axiom also supports a Discord bot token plus channel ID, but a channel webhook is simpler and requires less privilege.
+
+## Safe testing and operations
+
+To emit a sanitized test event from the worker container without touching business data:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml exec worker \
-  node -e 'require("fs").appendFileSync("/proc/1/fd/1", JSON.stringify({timestamp:new Date().toISOString(),level:"warn",event:"monitoring_test"})+"\n")'
+  ./node_modules/.bin/tsx -e 'import { log } from "./src/lib/observability/logger.ts"; import { flushAxiom } from "./src/lib/observability/axiom.ts"; void (async () => { log.error("source_processing_failed", {source:"monitoring_test",status:"failed",reason:"manual_test"}); await flushAxiom(); })();'
 ```
 
-Writing to `/proc/1/fd/1` is required: `docker compose exec` attaches the new
-process's stdout to your terminal, not to the container log stream, so a plain
-`process.stdout.write` never reaches the log shipper.
+Use a temporary match monitor for `source == 'monitoring_test'`, confirm Discord delivery, then delete the monitor. Do not test by changing or deleting production archive data.
 
-Confirm it appears in Live tail, then delete the temporary rule. To test heartbeat escalation, first route the monitor to email-only or put the service in a maintenance window, call the heartbeat URL with `/fail`, confirm the incident, and restore the desired escalation policy.
+If Axiom is unavailable, valid ingestion continues. Inspect `docker compose logs worker`, `/api/health`, `/admin/ingestion`, and the PostgreSQL `ingestion_runs`, `ingestion_errors`, and `data_quality_events` records while hosted delivery recovers.
 
-To exercise schema detection without touching production data, run the PostgreSQL integration suite against a disposable database. It imports synthetic payloads and verifies the raw response, schema diff, unknown-field deduplication, and structured events.
-
-## 6. Disabling telemetry
-
-To disable all external telemetry:
-
-1. leave `BETTERSTACK_HEARTBEAT_URL`, `BETTERSTACK_SOURCE_TOKEN`, and `BETTERSTACK_INGESTING_HOST` blank;
-2. stop/disable the host Vector service if no other workload uses it;
-3. recreate the worker container.
-
-Local JSON logging and PostgreSQL audit records remain active. No Better Stack component is a runtime dependency.
-
-## Event investigation runbook
-
-When `swg_api_schema_changed` fires:
-
-1. note `runId`, `ingestionId`, source, signatures, and structural diff in Better Stack;
-2. open `/admin/ingestion` and locate the data-quality event;
-3. open the matching raw ingestion or query `/raw-data/{ingestionId}`;
-4. inspect the complete payload preserved in PostgreSQL;
-5. update the Zod parser and unknown-field allow-list only after understanding the upstream change;
-6. deploy a new parser version and resolve the data-quality event after validation.
-
-The alert intentionally contains the structural diagnosis but never the full upstream response.
+When a source-change monitor fires, locate its `run_id` and `ingestion_id` in the protected ingestion console, inspect the raw response already preserved in PostgreSQL, update the Zod parser and unknown-field allow-list only after understanding the upstream change, and resolve the database quality event after validation.

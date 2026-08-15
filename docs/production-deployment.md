@@ -109,9 +109,9 @@ The development worker should remain stopped. This prevents two independent coll
 
 ## Optional monitoring setup
 
-Outer Rim Ledger emits low-volume structured JSON logs to Docker stdout/stderr and can notify an optional Better Stack heartbeat after each completed poll. PostgreSQL remains the permanent source of truth, and monitoring failures never fail ingestion.
+Outer Rim Ledger emits sanitized structured JSON logs to Docker stdout/stderr and queues the same operational events to optional Axiom hosting. PostgreSQL remains the permanent source of truth, and Axiom delivery failures never fail ingestion.
 
-Follow [monitoring.md](monitoring.md) to create the Docker log source, install the host Vector shipper, configure the five-minute heartbeat with a four-minute grace period, add an external `/api/health` monitor, and create noise-resistant alert rules. Leave every `BETTERSTACK_*` value blank to disable external telemetry.
+Follow [monitoring.md](monitoring.md) to create the Events dataset and scoped ingest token, configure APL monitors and a native Discord notifier, test delivery safely, and retain `/api/health` as an independent provider-neutral check. Leave both `AXIOM_TOKEN` and `AXIOM_DATASET` blank to disable hosted delivery.
 
 ## 5. Routine production updates
 

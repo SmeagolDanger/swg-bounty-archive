@@ -42,15 +42,15 @@ suite("ingestion observability persistence", () => {
     await ingestFixture(runId, "bounty_activity", "bounty", { ...validBountyPayload(), [unknownField]: true }, { case: `changed-${suffix}` });
     await ingestFixture(runId, "bounty_activity", "bounty", { ...validBountyPayload(), [unknownField]: false }, { case: `changed-again-${suffix}` });
 
-    expect(warning).toHaveBeenCalledWith("swg_api_unknown_fields", expect.objectContaining({ runId, sourceKey: "bounty_activity", unknownFields: [`$.${unknownField}`] }));
-    expect(warning).toHaveBeenCalledWith("swg_api_schema_changed", expect.objectContaining({
-      runId,
-      sourceKey: "bounty_activity",
-      addedPaths: [`$.${unknownField}`],
-      removedPaths: [],
-      changedTypes: [],
+    expect(warning).toHaveBeenCalledWith("source_fields_changed", expect.objectContaining({ run_id: runId, source: "bounty_activity", unexpected_fields: [`$.${unknownField}`] }));
+    expect(warning).toHaveBeenCalledWith("source_schema_changed", expect.objectContaining({
+      run_id: runId,
+      source: "bounty_activity",
+      unexpected_fields: [`$.${unknownField}`],
+      missing_fields: [],
+      changed_types: [],
     }));
-    expect(warning.mock.calls.filter(([event]) => event === "swg_api_unknown_fields")).toHaveLength(1);
+    expect(warning.mock.calls.filter(([event]) => event === "source_fields_changed")).toHaveLength(1);
 
     const events = await pool.query<{ event_type: string; details: Record<string, unknown> }>(
       "SELECT event_type,details FROM data_quality_events WHERE source_ingestion_id IN (SELECT id FROM api_ingestions WHERE run_id=$1) ORDER BY detected_at",
@@ -75,13 +75,13 @@ suite("ingestion observability persistence", () => {
     );
     expect(archived.rowCount).toBe(1);
     expect(archived.rows[0]).toMatchObject({ processing_status: "FAILED", payload, error_information: { errorCode: "VALIDATION_FAILED" } });
-    expect(failure).toHaveBeenCalledWith("swg_api_validation_failed", expect.objectContaining({
-      runId,
-      ingestionId: expect.any(String),
-      sourceKey: "bounty_activity",
-      parserVersion: PARSER_VERSION,
-      schemaSignature: expect.any(String),
-      affectedPaths: expect.arrayContaining([expect.stringContaining("credits")]),
+    expect(failure).toHaveBeenCalledWith("source_validation_failed", expect.objectContaining({
+      run_id: runId,
+      ingestion_id: expect.any(String),
+      source: "bounty_activity",
+      parser_version: PARSER_VERSION,
+      schema_signature: expect.any(String),
+      missing_fields: expect.arrayContaining([expect.stringContaining("credits")]),
     }));
   });
 });

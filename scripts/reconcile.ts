@@ -1,5 +1,6 @@
 import { pool } from "../src/lib/db/client";
 import { runIngestion } from "../src/lib/ingestion/pipeline";
+import { flushAxiom } from "../src/lib/observability/axiom";
 
 try {
   const result = await runIngestion("RECONCILE");
@@ -21,5 +22,6 @@ try {
   }
   process.stdout.write(`Reconciliation passed: ${runId}\n`);
 } finally {
+  await flushAxiom();
   await pool.end();
 }

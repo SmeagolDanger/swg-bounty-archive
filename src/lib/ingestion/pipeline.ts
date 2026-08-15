@@ -6,11 +6,12 @@ import { diffSchema, encounterFingerprint, hasUnobservedArrayMembers, schemaSign
 import { fetchJson, type FetchResult } from "./fetcher";
 import { boardCatalogSchema, bountySchema, leaderboardSchema, winsSchema, officersSchema } from "./schemas";
 import { findUnknownFields } from "./unknown-fields";
-import { log } from "@/lib/observability/logger";
+import { assessSourceIntegrity, classifyRunStatus, isDatabaseFailure, type IntegrityIssue, type SourceProcessor } from "./integrity";
+import { errorLogContext, log } from "@/lib/observability/logger";
 
 type RunType = "ONCE" | "POLL" | "BACKFILL" | "RECONCILE" | "INSPECT";
 type SourceKey = "board_catalog" | "bounty_activity" | "leaderboard" | "leaderboard_wins" | "gcw_officers";
-type Processor = "catalog" | "bounty" | "leaderboard" | "wins" | "officers";
+type Processor = SourceProcessor;
 
 interface WorkItem {
   sourceKey: SourceKey;
@@ -27,13 +28,21 @@ interface Counters {
   duplicates: number;
 }
 
+interface ProcessedSource extends Counters {
+  qualityIssues: IntegrityIssue[];
+}
+
 export interface IngestionRunResult {
   runId: string;
   status: "SUCCEEDED" | "PARTIAL";
 }
 
 class ArchivedIngestionError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(
+    message: string,
+    readonly kind: "validation" | "http" | "database" | "processing" = "processing",
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = "ArchivedIngestionError";
   }
@@ -278,7 +287,8 @@ async function recordSchemaAndUnknownFields(
   item: WorkItem,
   payload: unknown,
   shape: ReturnType<typeof schemaSignature>,
-): Promise<void> {
+): Promise<IntegrityIssue[]> {
+  const issues: IntegrityIssue[] = [];
   const scopeKey = schemaScope(item);
   const comparable = !hasUnobservedArrayMembers(shape.structure);
   const unknownFields = findUnknownFields(item.processor, payload);
@@ -292,10 +302,14 @@ async function recordSchemaAndUnknownFields(
        RETURNING id`,
       [eventKey, json({ sourceKey: item.sourceKey, scopeKey, unknownFields }), ingestionId],
     );
-    if (event.rowCount) log.warn("swg_api_unknown_fields", {
-      runId, ingestionId, sourceKey: item.sourceKey, endpoint: item.path, parserVersion: PARSER_VERSION,
-      schemaSignature: shape.signature, scopeKey, unknownFields,
-    });
+    if (event.rowCount) {
+      issues.push({ event: "source_integrity_failed", reason: "unexpected_fields", missing_fields: unknownFields });
+      log.warn("source_fields_changed", {
+        run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, endpoint: item.path, status: "partial",
+        parser_version: PARSER_VERSION, schema_signature: shape.signature, scope_key: scopeKey, unexpected_fields: unknownFields,
+        message: "SWG Legends response contains unexpected fields",
+      });
+    }
   }
 
   const previous = await pool.query<{ signature: string; structure: SchemaStructure }>(
@@ -314,7 +328,7 @@ async function recordSchemaAndUnknownFields(
   if (inserted.rows[0]?.inserted && prior && prior.signature !== shape.signature) {
     const diff = diffSchema(prior.structure, shape.structure);
     const meaningful = diff.addedPaths.length > 0 || diff.removedPaths.length > 0 || diff.changedTypes.length > 0;
-    if (!meaningful) return;
+    if (!meaningful) return issues;
     const details = {
       sourceKey: item.sourceKey,
       scopeKey,
@@ -329,14 +343,20 @@ async function recordSchemaAndUnknownFields(
        ON CONFLICT DO NOTHING RETURNING id`,
       [`${item.sourceKey}:${sha256(diff)}`, json(details), ingestionId],
     );
-    if (quality.rowCount) log.warn("swg_api_schema_changed", {
-      runId, ingestionId, sourceKey: item.sourceKey, endpoint: item.path, parserVersion: PARSER_VERSION,
-      scopeKey, previousSignature: prior.signature, newSignature: shape.signature, ...diff,
-    });
+    if (quality.rowCount) {
+      issues.push({ event: "source_integrity_failed", reason: "source_schema_changed" });
+      log.warn("source_schema_changed", {
+        run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, endpoint: item.path, status: "partial",
+        parser_version: PARSER_VERSION, scope_key: scopeKey, previous_signature: prior.signature,
+        schema_signature: shape.signature, missing_fields: diff.removedPaths, unexpected_fields: diff.addedPaths,
+        changed_types: diff.changedTypes, message: "SWG Legends response structure changed",
+      });
+    }
   }
+  return issues;
 }
 
-async function archiveAndProcess(runId: string, item: WorkItem, result: FetchResult): Promise<Counters> {
+async function archiveAndProcess(runId: string, item: WorkItem, result: FetchResult): Promise<ProcessedSource> {
   const baseUrl = swgBaseUrl();
   const source = await pool.query<{ id: string }>("SELECT id FROM api_sources WHERE source_key=$1", [item.sourceKey]);
   if (!source.rows[0]) throw new Error(`Unknown API source ${item.sourceKey}`);
@@ -351,41 +371,59 @@ async function archiveAndProcess(runId: string, item: WorkItem, result: FetchRes
       PARSER_VERSION, initialStatus],
   );
   const ingestionId = ingestion.rows[0].id;
+  let qualityIssues: IntegrityIssue[] = [];
   await pool.query("UPDATE api_sources SET last_attempt_at=now() WHERE id=$1", [sourceId]);
   if (result.status >= 200 && result.status < 300 && result.payload !== null && shape) {
     try {
-      await recordSchemaAndUnknownFields(runId, ingestionId, sourceId, item, result.payload, shape);
+      qualityIssues = await recordSchemaAndUnknownFields(runId, ingestionId, sourceId, item, result.payload, shape);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorCode = "SCHEMA_OBSERVATION_FAILED";
-      await pool.query(
-        "UPDATE api_ingestions SET processing_status='FAILED',error_information=$2::jsonb WHERE id=$1",
-        [ingestionId, json({ errorCode, message: errorMessage })],
-      );
-      await pool.query(
-        `INSERT INTO ingestion_errors(run_id,source_id,ingestion_id,error_code,message,details) VALUES($1,$2,$3,$4,$5,$6::jsonb)`,
-        [runId, sourceId, ingestionId, errorCode, errorMessage, json({ path: item.path, parameters: item.parameters })],
-      );
-      log.error("swg_api_processing_failed", {
-        runId, ingestionId, sourceKey: item.sourceKey, endpoint: item.path, httpStatus: result.status,
-        durationMs: result.durationMs, parserVersion: PARSER_VERSION, schemaSignature: shape.signature,
-        errorCode, errorMessage,
+      log.error("database_transaction_failed", {
+        run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, endpoint: item.path, status: "failed",
+        http_status: result.status, duration_ms: result.durationMs, parser_version: PARSER_VERSION,
+        schema_signature: shape.signature, reason: "schema_observation_failed", error_type: errorCode,
+        error_message: errorMessage, ...errorLogContext(error),
       });
-      throw new ArchivedIngestionError(errorMessage, { cause: error });
+      try {
+        await pool.query(
+          "UPDATE api_ingestions SET processing_status='FAILED',error_information=$2::jsonb WHERE id=$1",
+          [ingestionId, json({ errorCode, message: errorMessage })],
+        );
+        await pool.query(
+          `INSERT INTO ingestion_errors(run_id,source_id,ingestion_id,error_code,message,details) VALUES($1,$2,$3,$4,$5,$6::jsonb)`,
+          [runId, sourceId, ingestionId, errorCode, errorMessage, json({ path: item.path, parameters: item.parameters })],
+        );
+      } catch (auditError) {
+        log.error("database_transaction_failed", {
+          run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, status: "failed",
+          reason: "schema_failure_audit_write_failed", ...errorLogContext(auditError),
+        });
+      }
+      throw new ArchivedIngestionError(errorMessage, "database", { cause: error });
     }
   }
 
   if (result.status < 200 || result.status >= 300) {
     const message = `SWG returned HTTP ${result.status}`;
-    await pool.query(
-      `INSERT INTO ingestion_errors(run_id,source_id,ingestion_id,error_code,message,details) VALUES($1,$2,$3,'HTTP_ERROR',$4,$5::jsonb)`,
-      [runId, sourceId, ingestionId, message, json({ path: item.path, parameters: item.parameters, httpStatus: result.status })],
-    );
-    log.warn("swg_api_http_error", {
-      runId, ingestionId, sourceKey: item.sourceKey, endpoint: item.path, httpStatus: result.status,
-      durationMs: result.durationMs, parserVersion: PARSER_VERSION, schemaSignature: shape?.signature, errorCode: "HTTP_ERROR", errorMessage: message,
+    log.warn(result.status === 429 ? "api_rate_limited" : "api_http_error", {
+      run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, endpoint: item.path, status: "failed",
+      http_status: result.status, duration_ms: result.durationMs, parser_version: PARSER_VERSION,
+      schema_signature: shape?.signature, reason: result.status === 429 ? "api_rate_limited" : "http_error",
+      error_type: result.status === 429 ? "RATE_LIMITED" : "HTTP_ERROR", error_message: message,
     });
-    throw new ArchivedIngestionError(message);
+    try {
+      await pool.query(
+        `INSERT INTO ingestion_errors(run_id,source_id,ingestion_id,error_code,message,details) VALUES($1,$2,$3,'HTTP_ERROR',$4,$5::jsonb)`,
+        [runId, sourceId, ingestionId, message, json({ path: item.path, parameters: item.parameters, httpStatus: result.status })],
+      );
+    } catch (auditError) {
+      log.error("database_transaction_failed", {
+        run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, status: "failed",
+        reason: "http_failure_audit_write_failed", ...errorLogContext(auditError),
+      });
+    }
+    throw new ArchivedIngestionError(message, "http");
   }
 
   const client = await pool.connect();
@@ -401,23 +439,44 @@ async function archiveAndProcess(runId: string, item: WorkItem, result: FetchRes
     await client.query("UPDATE api_sources SET last_success_at=now(),last_attempt_at=now() WHERE id=$1", [sourceId]);
     await client.query("UPDATE ingestion_errors SET resolved_at=now() WHERE source_id=$1 AND resolved_at IS NULL", [sourceId]);
     await client.query("COMMIT");
-    return counters;
+    return { ...counters, qualityIssues };
   } catch (error) {
-    await client.query("ROLLBACK");
     const details = validationDetails(error);
     const errorCode = error instanceof ZodError ? "VALIDATION_FAILED" : "PROCESSING_FAILED";
-    await pool.query("UPDATE api_ingestions SET processing_status='FAILED',error_information=$2::jsonb WHERE id=$1", [ingestionId, json({ errorCode, ...details })]);
-    await pool.query(
-      `INSERT INTO ingestion_errors(run_id,source_id,ingestion_id,error_code,message,details) VALUES($1,$2,$3,$4,$5,$6::jsonb)`,
-      [runId, sourceId, ingestionId, errorCode, details.message, json({ path: item.path, parameters: item.parameters, affectedPaths: details.affectedPaths })],
-    );
     const context = {
-      runId, ingestionId, sourceKey: item.sourceKey, endpoint: item.path, httpStatus: result.status, durationMs: result.durationMs,
-      parserVersion: PARSER_VERSION, schemaSignature: shape?.signature, errorCode, errorMessage: details.message, affectedPaths: details.affectedPaths,
+      run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, endpoint: item.path, status: "failed",
+      http_status: result.status, duration_ms: result.durationMs, parser_version: PARSER_VERSION,
+      schema_signature: shape?.signature, reason: errorCode.toLowerCase(), error_type: errorCode, error_message: details.message,
+      missing_fields: details.affectedPaths, ...errorLogContext(error),
     };
-    if (error instanceof ZodError) log.error("swg_api_validation_failed", context);
-    else log.error("swg_api_processing_failed", context);
-    throw new ArchivedIngestionError(details.message, { cause: error });
+    if (error instanceof ZodError) log.error("source_validation_failed", context);
+    else if (isDatabaseFailure(error)) log.error("database_transaction_failed", context);
+    else log.error("source_processing_failed", context);
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      log.error("database_transaction_failed", {
+        run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, status: "failed",
+        reason: "transaction_rollback_failed", ...errorLogContext(rollbackError),
+      });
+    }
+    try {
+      await pool.query("UPDATE api_ingestions SET processing_status='FAILED',error_information=$2::jsonb WHERE id=$1", [ingestionId, json({ errorCode, ...details })]);
+      await pool.query(
+        `INSERT INTO ingestion_errors(run_id,source_id,ingestion_id,error_code,message,details) VALUES($1,$2,$3,$4,$5,$6::jsonb)`,
+        [runId, sourceId, ingestionId, errorCode, details.message, json({ path: item.path, parameters: item.parameters, affectedPaths: details.affectedPaths })],
+      );
+    } catch (auditError) {
+      log.error("database_transaction_failed", {
+        run_id: runId, ingestion_id: ingestionId, source: item.sourceKey, status: "failed",
+        reason: "failure_audit_write_failed", ...errorLogContext(auditError),
+      });
+    }
+    throw new ArchivedIngestionError(
+      details.message,
+      error instanceof ZodError ? "validation" : isDatabaseFailure(error) ? "database" : "processing",
+      { cause: error },
+    );
   } finally {
     client.release();
   }
@@ -456,50 +515,133 @@ function isTimeoutError(error: unknown): boolean {
 }
 
 async function recordTransportFailure(runId: string, item: WorkItem, error: unknown): Promise<void> {
-  const source = await pool.query<{ id: string }>("SELECT id FROM api_sources WHERE source_key=$1", [item.sourceKey]);
   const timeout = isTimeoutError(error);
   const errorCode = timeout ? "TIMEOUT" : "TRANSPORT_ERROR";
   const errorMessage = error instanceof Error ? error.message : String(error);
-  if (source.rows[0]) await pool.query("UPDATE api_sources SET last_attempt_at=now() WHERE id=$1", [source.rows[0].id]);
-  await pool.query(
-    `INSERT INTO ingestion_errors(run_id,source_id,error_code,message,details) VALUES($1,$2,$3,$4,$5::jsonb)`,
-    [runId, source.rows[0]?.id ?? null, errorCode, errorMessage, json({ path: item.path, parameters: item.parameters })],
-  );
+  try {
+    const source = await pool.query<{ id: string }>("SELECT id FROM api_sources WHERE source_key=$1", [item.sourceKey]);
+    if (source.rows[0]) await pool.query("UPDATE api_sources SET last_attempt_at=now() WHERE id=$1", [source.rows[0].id]);
+    await pool.query(
+      `INSERT INTO ingestion_errors(run_id,source_id,error_code,message,details) VALUES($1,$2,$3,$4,$5::jsonb)`,
+      [runId, source.rows[0]?.id ?? null, errorCode, errorMessage, json({ path: item.path, parameters: item.parameters })],
+    );
+  } catch (databaseError) {
+    log.error("database_transaction_failed", {
+      run_id: runId, source: item.sourceKey, source_instance: item.path, status: "failed",
+      reason: "transport_failure_audit_write_failed", ...errorLogContext(databaseError),
+    });
+  }
   const context = {
-    runId, sourceKey: item.sourceKey, endpoint: item.path, parserVersion: PARSER_VERSION, errorCode, errorMessage,
+    run_id: runId, source: item.sourceKey, endpoint: item.path, status: "failed", parser_version: PARSER_VERSION,
+    error_type: errorCode, error_message: errorMessage, ...errorLogContext(error),
   };
-  if (timeout) log.warn("swg_api_timeout", context);
-  else log.error("swg_api_transport_error", context);
+  if (timeout) log.warn("api_timeout", context);
+  else log.error("api_transport_error", context);
 }
 
 export async function runIngestion(runType: RunType = "ONCE", periods: readonly string[] = PERIODS): Promise<IngestionRunResult> {
   const run = await pool.query<{ id: string }>("INSERT INTO ingestion_runs(run_type) VALUES($1) RETURNING id", [runType]);
   const runId = run.rows[0].id;
-  const startedAt = Date.now();
+  const startedAt = new Date();
   let requests = 0;
+  let expectedRecords = 0;
   let received = 0;
   let inserted = 0;
   let unchanged = 0;
   let revised = 0;
   let duplicates = 0;
   let errors = 0;
+  let rejectedRecords = 0;
+  let partialSources = 0;
   const baseUrl = swgBaseUrl();
   let finalized = false;
-  log.info("ingestion_run_started", { runId, runType });
+  log.info("ingestion_started", {
+    run_id: runId,
+    run_type: runType.toLowerCase(),
+    source: "all",
+    status: "running",
+    started_at: startedAt.toISOString(),
+  });
 
   const execute = async (item: WorkItem) => {
     requests += 1;
+    const sourceStartedAt = new Date();
+    let responseReceived = false;
     try {
       const response = await fetchJson(`${baseUrl}${item.path}`);
+      responseReceived = true;
       const counts = await archiveAndProcess(runId, item, response);
+      const integrity = assessSourceIntegrity(item.processor, response.payload);
+      const issues = [...counts.qualityIssues, ...integrity.issues];
+      const sourceStatus = issues.length ? "partial" : "success";
+      if (sourceStatus === "partial") partialSources += 1;
+      expectedRecords += integrity.expected_records;
       received += counts.received;
       inserted += counts.inserted;
       unchanged += counts.unchanged;
       revised += counts.revised;
       duplicates += counts.duplicates;
+
+      for (const issue of integrity.issues.filter((entry) => entry.event === "pagination_incomplete")) {
+        log.warn("pagination_incomplete", {
+          run_id: runId, source: item.sourceKey, source_instance: item.path, status: "partial",
+          started_at: sourceStartedAt.toISOString(), completed_at: new Date().toISOString(),
+          ...issue,
+        });
+      }
+
+      const summary = {
+        run_id: runId,
+        run_type: runType.toLowerCase(),
+        source: item.sourceKey,
+        source_instance: item.path,
+        status: sourceStatus,
+        started_at: sourceStartedAt.toISOString(),
+        completed_at: new Date().toISOString(),
+        duration_ms: Date.now() - sourceStartedAt.getTime(),
+        expected_records: integrity.expected_records,
+        received_records: integrity.received_records,
+        inserted_records: counts.inserted,
+        updated_records: counts.revised,
+        unchanged_records: counts.unchanged,
+        rejected_records: 0,
+        duplicate_records: counts.duplicates,
+        ...(issues.length ? { reason: issues.map((issue) => issue.reason), issue_count: issues.length } : {}),
+      };
+      if (sourceStatus === "partial") log.warn("ingestion_complete", summary);
+      else log.info("ingestion_complete", summary);
     } catch (error) {
       errors += 1;
-      if (!(error instanceof ArchivedIngestionError)) await recordTransportFailure(runId, item, error);
+      if (error instanceof ArchivedIngestionError && error.kind === "validation") rejectedRecords += 1;
+      if (!(error instanceof ArchivedIngestionError)) {
+        if (responseReceived) {
+          log.error("database_transaction_failed", {
+            run_id: runId, source: item.sourceKey, source_instance: item.path, status: "failed",
+            reason: "archive_or_database_write_failed", ...errorLogContext(error),
+          });
+        } else {
+          await recordTransportFailure(runId, item, error);
+        }
+      }
+      log.error("ingestion_complete", {
+        run_id: runId,
+        run_type: runType.toLowerCase(),
+        source: item.sourceKey,
+        source_instance: item.path,
+        status: "failed",
+        started_at: sourceStartedAt.toISOString(),
+        completed_at: new Date().toISOString(),
+        duration_ms: Date.now() - sourceStartedAt.getTime(),
+        expected_records: 0,
+        received_records: 0,
+        inserted_records: 0,
+        updated_records: 0,
+        unchanged_records: 0,
+        rejected_records: error instanceof ArchivedIngestionError && error.kind === "validation" ? 1 : 0,
+        duplicate_records: 0,
+        reason: error instanceof ArchivedIngestionError ? error.kind : "transport",
+        ...errorLogContext(error),
+      });
     }
   };
 
@@ -508,25 +650,60 @@ export async function runIngestion(runType: RunType = "ONCE", periods: readonly 
     const configuredConcurrency = Number(process.env.INGESTION_CONCURRENCY ?? 2);
     const concurrency = Number.isFinite(configuredConcurrency) ? Math.max(1, Math.min(4, configuredConcurrency)) : 2;
     await runConcurrent(buildWork(periods), concurrency, execute);
-    const status = errors === 0 ? "SUCCEEDED" : errors < requests ? "PARTIAL" : "FAILED";
+    const status = classifyRunStatus(requests, errors, partialSources);
     await pool.query(
       `UPDATE ingestion_runs SET status=$2,finished_at=now(),requests=$3,received=$4,inserted=$5,unchanged=$6,revised=$7,duplicates_prevented=$8,errors=$9 WHERE id=$1`,
       [runId, status, requests, received, inserted, unchanged, revised, duplicates, errors],
     );
     finalized = true;
-    const summary = { runId, runType, durationMs: Date.now() - startedAt, requests, received, inserted, unchanged, revised, duplicatesPrevented: duplicates, errors };
-    if (status === "SUCCEEDED") log.info("ingestion_run_succeeded", summary);
-    else if (status === "PARTIAL") log.warn("ingestion_run_partial", summary);
-    else log.error("ingestion_run_failed", { ...summary, errorCode: "ALL_REQUESTS_FAILED", errorMessage: `All ${requests} requests failed` });
+    const completedAt = new Date();
+    const summary = {
+      run_id: runId,
+      run_type: runType.toLowerCase(),
+      source: "all",
+      status: status === "SUCCEEDED" ? "success" : status.toLowerCase(),
+      started_at: startedAt.toISOString(),
+      completed_at: completedAt.toISOString(),
+      duration_ms: completedAt.getTime() - startedAt.getTime(),
+      request_count: requests,
+      expected_records: expectedRecords,
+      received_records: received,
+      inserted_records: inserted,
+      updated_records: revised,
+      unchanged_records: unchanged,
+      rejected_records: rejectedRecords,
+      duplicate_records: duplicates,
+      partial_sources: partialSources,
+      failed_sources: errors,
+      ...(status === "PARTIAL" ? {
+        reason: [errors > 0 ? "source_failures" : null, partialSources > 0 ? "source_integrity_warnings" : null].filter(Boolean),
+      } : {}),
+      ...(status === "FAILED" ? { reason: "all_requests_failed", error_message: `All ${requests} requests failed` } : {}),
+    };
+    if (status === "SUCCEEDED") log.info("ingestion_run_complete", summary);
+    else if (status === "PARTIAL") log.warn("ingestion_run_complete", summary);
+    else log.error("ingestion_run_complete", summary);
     if (status === "FAILED") throw new ArchivedIngestionError(`Ingestion ${runId} failed`);
     return { runId, status };
   } catch (error) {
     if (!finalized) {
-      await pool.query("UPDATE ingestion_runs SET status='FAILED',finished_at=now(),errors=GREATEST(errors,1) WHERE id=$1", [runId]);
-      log.error("ingestion_run_failed", {
-        runId, runType, durationMs: Date.now() - startedAt, requests, received, inserted, unchanged, revised,
-        duplicatesPrevented: duplicates, errors: Math.max(errors, 1), errorCode: "RUN_ABORTED",
-        errorMessage: error instanceof Error ? error.message : String(error),
+      try {
+        await pool.query("UPDATE ingestion_runs SET status='FAILED',finished_at=now(),errors=GREATEST(errors,1) WHERE id=$1", [runId]);
+      } catch (databaseError) {
+        log.error("database_transaction_failed", {
+          run_id: runId, source: "ingestion_runs", status: "failed", reason: "run_finalization_failed",
+          ...errorLogContext(databaseError),
+        });
+      }
+      const completedAt = new Date();
+      log.error("ingestion_run_complete", {
+        run_id: runId, run_type: runType.toLowerCase(), source: "all", status: "failed",
+        started_at: startedAt.toISOString(), completed_at: completedAt.toISOString(),
+        duration_ms: completedAt.getTime() - startedAt.getTime(), request_count: requests,
+        expected_records: expectedRecords, received_records: received, inserted_records: inserted,
+        updated_records: revised, unchanged_records: unchanged, rejected_records: rejectedRecords,
+        duplicate_records: duplicates, partial_sources: partialSources, failed_sources: Math.max(errors, 1),
+        reason: "run_aborted", ...errorLogContext(error),
       });
     }
     throw error;

@@ -1,6 +1,7 @@
 import { pool } from "../src/lib/db/client";
 import { PERIODS } from "../src/lib/ingestion/config";
 import { runIngestion } from "../src/lib/ingestion/pipeline";
+import { flushAxiom } from "../src/lib/observability/axiom";
 
 try {
   for (const period of PERIODS) {
@@ -25,5 +26,6 @@ try {
     }
   }
 } finally {
+  await flushAxiom();
   await pool.end();
 }
