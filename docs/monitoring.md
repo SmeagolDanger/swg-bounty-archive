@@ -98,8 +98,12 @@ Test log shipping before enabling paging by creating a temporary low-priority pr
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml exec worker \
-  node -e 'process.stdout.write(JSON.stringify({timestamp:new Date().toISOString(),level:"warn",event:"monitoring_test"})+"\n")'
+  node -e 'require("fs").appendFileSync("/proc/1/fd/1", JSON.stringify({timestamp:new Date().toISOString(),level:"warn",event:"monitoring_test"})+"\n")'
 ```
+
+Writing to `/proc/1/fd/1` is required: `docker compose exec` attaches the new
+process's stdout to your terminal, not to the container log stream, so a plain
+`process.stdout.write` never reaches the log shipper.
 
 Confirm it appears in Live tail, then delete the temporary rule. To test heartbeat escalation, first route the monitor to email-only or put the service in a maintenance window, call the heartbeat URL with `/fail`, confirm the incident, and restore the desired escalation policy.
 
