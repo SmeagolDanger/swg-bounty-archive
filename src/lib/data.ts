@@ -9,11 +9,18 @@ export const isBoard = (value: string): value is (typeof TRACKED_BOARD_IDS)[numb
 // "tracked" counts must stay scoped to participants observed on a bounty
 // board (entries or wins) or they inflate with GCW-only players/guilds/cities.
 const BOUNTY_BOARD_SQL_LIST = BOUNTY_BOARD_IDS.map((id) => `'${id}'`).join(",");
-const countBountyParticipants = (type: "player" | "guild" | "city") =>
-  `(SELECT count(*)::int FROM participants bp WHERE bp.participant_type='${type}' AND (
-      EXISTS (SELECT 1 FROM leaderboard_entries be_e JOIN leaderboard_snapshots be_s ON be_s.id=be_e.snapshot_id
-              WHERE be_e.participant_id=bp.id AND be_s.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST}))
-      OR EXISTS (SELECT 1 FROM leaderboard_wins be_w WHERE be_w.participant_id=bp.id AND be_w.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST}))))`;
+const bountyBoardPresence = (alias: string) =>
+  `(EXISTS (SELECT 1 FROM leaderboard_entries be_e JOIN leaderboard_snapshots be_s ON be_s.id=be_e.snapshot_id
+              WHERE be_e.participant_id=${alias}.id AND be_s.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST}))
+      OR EXISTS (SELECT 1 FROM leaderboard_wins be_w WHERE be_w.participant_id=${alias}.id AND be_w.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST})))`;
+const countBountyParticipants = (type: "player" | "guild" | "city") => {
+  // Players also count when their name appears as a hunter in the encounter
+  // archive — encounters carry names only, so this is name-matched.
+  const encounterMatch = type === "player"
+    ? ` OR EXISTS (SELECT 1 FROM bounty_encounters be_n WHERE lower(be_n.hunter_name)=lower(bp.current_name))`
+    : "";
+  return `(SELECT count(*)::int FROM participants bp WHERE bp.participant_type='${type}' AND (${bountyBoardPresence("bp")}${encounterMatch}))`;
+};
 export const isPeriod = (value: string): value is (typeof PERIODS)[number] => PERIODS.includes(value as (typeof PERIODS)[number]);
 export const isSubject = (value: string): value is (typeof SUBJECTS)[number] => SUBJECTS.includes(value as (typeof SUBJECTS)[number]);
 
@@ -126,7 +133,11 @@ export interface HunterDirectoryFilters {
 
 export async function getHunterDirectory(filters: HunterDirectoryFilters = {}) {
   const values: unknown[] = [];
-  const conditions = ["p.participant_type='player'"];
+  // The Hunters directory shows bounty-relevant players only: on a bounty
+  // board or present in the encounter archive. GCW-only participants keep
+  // their dossiers (reachable via search and guild/officer links) but are
+  // not listed here.
+  const conditions = ["p.participant_type='player'", `(em.hunter_key IS NOT NULL OR ${bountyBoardPresence("p")})`];
   const bind = (value: unknown) => { values.push(value); return `$${values.length}`; };
   if (filters.q?.trim()) conditions.push(`(p.current_name ILIKE ${bind(`%${filters.q.trim()}%`)} OR p.guild_abbreviation ILIKE ${bind(`%${filters.q.trim()}%`)})`);
   if (filters.activity === "seen") conditions.push("em.encounters > 0");
