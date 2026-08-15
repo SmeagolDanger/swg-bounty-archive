@@ -37,8 +37,6 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
   const salute = data.officerSalute;
   const saluteIsOfficer = salute && Number(salute.rank_index) >= 7;
   const corps = data.officerCorps;
-  const gcwSubjectNoun = type === "player" ? "players" : type === "guild" ? "guilds" : "cities";
-  const gcwPublishedCount = type === "player" ? 25 : 10;
   const isoDay = (value: unknown) => String(value ?? "").slice(0, 10);
 
   // Compact GCW badges: essentials on the chip, full detail in the tooltip.
@@ -61,14 +59,6 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
       label: <>{GCW_BOARD_FACTIONS[board]} GCW <b>#{integer(current.rank)}</b> · {gcwShare(current.score_raw)} · {trend}</>,
     });
   }
-  if (gcwBadgeItems.length === 0) {
-    gcwBadgeItems.push({
-      key: "gcw-unranked",
-      className: "badge--muted",
-      title: `Not on either faction's published GCW board this week — the source lists only the top ${gcwPublishedCount} ${gcwSubjectNoun} per faction.`,
-      label: <>GCW unranked</>,
-    });
-  }
   if (type === "player") {
     if (saluteIsOfficer) {
       gcwBadgeItems.push({
@@ -77,14 +67,12 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
         title: `Officers' Salute — ${salute.faction_name} ${salute.rank_name} (rank ${salute.rank_index} of 12). ${integer(salute.current_gcw_points)} GCW points and ${integer(salute.current_pvp_kills)} PvP kills this week${salute.profession ? ` · ${salute.profession}` : ""}. Observed ${isoDay(salute.observed_at)}.`,
         label: <>⌖ <b>{salute.rank_name}</b> · {integer(salute.current_gcw_points)} pts wk</>,
       });
-    } else {
+    } else if (salute) {
       gcwBadgeItems.push({
-        key: "salute-none",
+        key: "salute-enlisted",
         className: "badge--muted",
-        title: salute
-          ? `Currently serving as ${salute.rank_name} (rank ${salute.rank_index} of 12) in the ${salute.faction_name} forces with ${integer(salute.current_gcw_points)} GCW points this week. The salute is reserved for commissioned officers — Lieutenant (rank 7) and above.`
-          : "No commission on record — this hunter does not appear in either faction's Officers' Salute registry this week. A Lieutenant's commission (rank 7) earns the salute.",
-        label: <>No commission</>,
+        title: `Serving as ${salute.rank_name} (rank ${salute.rank_index} of 12) in the ${salute.faction_name} forces with ${integer(salute.current_gcw_points)} GCW points this week. The salute is reserved for commissioned officers — Lieutenant (rank 7) and above.`,
+        label: <>{salute.rank_name} · {salute.rank_index}/12</>,
       });
     }
   }
@@ -105,16 +93,9 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
           label: <>{officer.name} · {officer.rank_name}</>,
         });
       }
-    } else {
-      gcwBadgeItems.push({
-        key: "corps-none",
-        className: "badge--muted",
-        title: "No members of this roster hold a commission in the current Officers' Salute registry.",
-        label: <>No officers</>,
-      });
     }
   }
-  const gcwBadges = <div className="badge-row">{gcwBadgeItems.map((item) => item.href
+  const gcwBadges = gcwBadgeItems.length === 0 ? null : <div className="badge-row">{gcwBadgeItems.map((item) => item.href
     ? <Link key={item.key} className={`badge ${item.className}`} href={item.href} title={item.title} aria-label={item.title}>{item.label}</Link>
     : <span key={item.key} className={`badge ${item.className}`} title={item.title} aria-label={item.title}>{item.label}</span>)}</div>;
   const noun = type === "player" ? "Hunter" : type === "guild" ? "Guild" : "City";
