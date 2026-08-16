@@ -22,6 +22,7 @@ suite("schema narrowing stays silent at weekly rollover", () => {
   afterAll(async () => {
     vi.restoreAllMocks();
     if (runId) {
+      await pool.query("DELETE FROM ingestion_errors WHERE run_id=$1", [runId]);
       await pool.query("DELETE FROM data_quality_events WHERE source_ingestion_id IN (SELECT id FROM api_ingestions WHERE run_id=$1)", [runId]);
       await pool.query("DELETE FROM schema_signatures WHERE first_ingestion_id IN (SELECT id FROM api_ingestions WHERE run_id=$1)", [runId]);
       await pool.query("DELETE FROM data_revisions WHERE source_ingestion_id IN (SELECT id FROM api_ingestions WHERE run_id=$1)", [runId]);
@@ -59,10 +60,19 @@ suite("schema narrowing stays silent at weekly rollover", () => {
     ]), { case: `refill-${suffix}` });
     expect(warning.mock.calls.filter(([event]) => event === "source_schema_changed")).toHaveLength(0);
 
-    // True widening: faction shows null, a type never observed on that path.
+    // First null on a parser-declared-nullable path: never observed on this
+    // scope, but the parser explicitly allows it — silent.
     await ingestFixture(runId, "leaderboard_wins", "wins", winsPayload([
       { rank: 6, participantId: pid(6), name: "Narrow F", wins: 4, guildAbbreviation: "MNO", faction: null, planet: "corellia" },
-    ]), { case: `widen-${suffix}` });
+    ]), { case: `nullable-first-${suffix}` });
+    expect(warning.mock.calls.filter(([event]) => event === "source_schema_changed")).toHaveLength(0);
+
+    // True widening: a type the parser does not accept (number on planet).
+    // Schema drift is recorded before parsing, so the warning fires even
+    // though validation then rejects the payload.
+    await expect(ingestFixture(runId, "leaderboard_wins", "wins", winsPayload([
+      { rank: 7, participantId: pid(7), name: "Narrow G", wins: 5, guildAbbreviation: "PQR", faction: "REBEL", planet: 42 },
+    ]), { case: `widen-${suffix}` })).rejects.toThrow();
     expect(warning.mock.calls.filter(([event]) => event === "source_schema_changed")).toHaveLength(1);
 
     const events = await pool.query(

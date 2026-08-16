@@ -4,7 +4,7 @@ import { pool } from "@/lib/db/client";
 import { GCW_FACTIONS, PARSER_VERSION, PERIODS, SUBJECTS, swgBaseUrl, TRACKED_BOARD_CATEGORIES, TRACKED_BOARD_IDS } from "./config";
 import { diffSchema, encounterFingerprint, hasUnobservedArrayMembers, schemaSignature, sha256, type SchemaStructure } from "./hash";
 import { fetchJson, type FetchResult } from "./fetcher";
-import { boardCatalogSchema, bountySchema, leaderboardSchema, winsSchema, officersSchema } from "./schemas";
+import { boardCatalogSchema, bountySchema, leaderboardSchema, winsSchema, officersSchema, PARSER_NULLABLE_PATHS } from "./schemas";
 import { findUnknownFields } from "./unknown-fields";
 import { assessSourceIntegrity, classifyRunStatus, isDatabaseFailure, type IntegrityIssue, type SourceProcessor } from "./integrity";
 import { errorLogContext, log } from "@/lib/observability/logger";
@@ -343,7 +343,8 @@ async function recordSchemaAndUnknownFields(
     }
     const diff = diffSchema(knownStructure, shape.structure);
     const removedEverywhere = diff.removedPaths.filter((path) => pathPresence.get(path) === previous.rows.length);
-    const widenedTypes = diff.changedTypes.filter((change) => change.to.some((type) => !change.from.includes(type)));
+    const widenedTypes = diff.changedTypes.filter((change) => change.to.some((type) =>
+      !change.from.includes(type) && !(type === "null" && PARSER_NULLABLE_PATHS.has(change.path))));
     const meaningful = diff.addedPaths.length > 0 || removedEverywhere.length > 0 || widenedTypes.length > 0;
     if (!meaningful) return issues;
     const reported = { addedPaths: diff.addedPaths, removedPaths: removedEverywhere, changedTypes: widenedTypes };

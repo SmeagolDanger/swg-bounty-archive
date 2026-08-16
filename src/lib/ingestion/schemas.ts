@@ -142,6 +142,18 @@ export const bountySchema = z.object({
   }
 });
 
+// Structure paths whose parser explicitly declares null acceptable. A null
+// observed on these paths is never news — young scopes should not alarm the
+// first time a nullable field actually carries null.
+export const PARSER_NULLABLE_PATHS = new Set([
+  "$.entries[].guildAbbreviation", "$.entries[].faction", "$.entries[].planet", "$.entries[].cityName",
+  "$.cityWins[].guildAbbreviation", "$.cityWins[].faction", "$.cityWins[].planet",
+  "$.guildWins[].guildAbbreviation", "$.guildWins[].faction", "$.guildWins[].planet",
+  "$.officers[].profession", "$.officers[].guildName", "$.officers[].guildAbbreviation",
+  "$.officers[].residentPlanet", "$.officers[].residentCityName",
+  "$.summary.largestBounty",
+]);
+
 export type BoardCatalog = z.infer<typeof boardCatalogSchema>;
 export type LeaderboardPayload = z.infer<typeof leaderboardSchema>;
 export type WinsPayload = z.infer<typeof winsSchema>;
