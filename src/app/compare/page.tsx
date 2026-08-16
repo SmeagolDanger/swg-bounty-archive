@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { CompareBuilder } from "@/components/compare-builder";
 import { ALL_BOARD_LABELS, getParticipant } from "@/lib/data";
+import { latestLeaderboardRows } from "@/lib/leaderboard-history";
 
 export const metadata: Metadata = { title: "Compare hunters" };
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const ids = ((await searchParams).ids ?? "").split(",").filter(Boolean).slice(0,5);
   const dossiers = (await Promise.all(ids.map((id)=>getParticipant(id,"player")))).filter(Boolean);
   const rows = dossiers.map((dossier) => {
-    const latest = new Map<string,Record<string,unknown>>(); for (const row of dossier!.history) if (!latest.has(row.leaderboard_id)) latest.set(row.leaderboard_id,row);
+    const latest = latestLeaderboardRows(dossier!.history);
     return { dossier:dossier!,latest,hunter:dossier!.hunterSummary };
   });
   const integer = (value: unknown) => Number(value ?? 0).toLocaleString("en-US");

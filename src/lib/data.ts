@@ -545,25 +545,34 @@ async function getHunterRivalries(hunterName: string) {
 export async function getLeaderboard(board: string, period: string, subject: string) {
   if (!isBoard(board) || !isPeriod(period) || !isSubject(subject)) throw new Error("Invalid leaderboard selection");
   const snapshot = await pool.query(
-    `SELECT s.id,s.total_score::float8,s.value_type,s.source_fetched_at,p.starts_at,p.ends_at
+    `SELECT s.id,s.period_id,s.total_score::float8,s.value_type,s.source_fetched_at,s.observed_at,p.starts_at,p.ends_at
      FROM leaderboard_snapshots s JOIN leaderboard_periods p ON p.id=s.period_id
      WHERE s.leaderboard_id=$1 AND p.source_period_key=$2 AND s.subject=$3 ORDER BY s.observed_at DESC LIMIT 1`,
     [board, period, subject],
   );
   if (!snapshot.rows[0]) return { snapshot: null, entries: [] };
+  const selected = snapshot.rows[0];
   const entries = await pool.query(
     `SELECT e.rank,e.score::float8,e.score_raw,p.id AS participant_id,p.current_name,p.guild_abbreviation,p.faction,p.planet,p.city_name,
       previous.rank AS previous_rank,previous.score::float8 AS previous_score
      FROM leaderboard_entries e JOIN participants p ON p.id=e.participant_id
      LEFT JOIN LATERAL (
        SELECT pe.rank,pe.score FROM leaderboard_entries pe JOIN leaderboard_snapshots ps ON ps.id=pe.snapshot_id
-       WHERE pe.source_participant_id=e.source_participant_id AND ps.leaderboard_id=$2 AND ps.subject=$3 AND ps.observed_at < $4
+       WHERE pe.source_participant_id=e.source_participant_id AND ps.leaderboard_id=$2 AND ps.subject=$3
+         AND ps.period_id=$5 AND ps.observed_at < $4
        ORDER BY ps.observed_at DESC LIMIT 1
      ) previous ON true
      WHERE e.snapshot_id=$1 ORDER BY e.rank`,
-    [snapshot.rows[0].id, board, subject, snapshot.rows[0].source_fetched_at],
+    [selected.id, board, subject, selected.observed_at, selected.period_id],
   );
-  return { snapshot: snapshot.rows[0], entries: entries.rows };
+  return { snapshot: {
+    id: selected.id,
+    total_score: selected.total_score,
+    value_type: selected.value_type,
+    source_fetched_at: selected.source_fetched_at,
+    starts_at: selected.starts_at,
+    ends_at: selected.ends_at,
+  }, entries: entries.rows };
 }
 
 export async function searchEntities(q: string, limit = 20) {

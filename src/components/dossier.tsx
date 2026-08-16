@@ -7,6 +7,7 @@ import { EncounterList } from "./encounter-list";
 import { HistoryChart } from "./history-chart";
 import { HunterActivityChart } from "./hunter-activity-chart";
 import { LocalDateTime } from "./local-date-time";
+import { latestLeaderboardRows } from "@/lib/leaderboard-history";
 
 // Deduplicates the dossier query between generateMetadata and the page render.
 export const loadParticipant = cache(getParticipant);
@@ -23,8 +24,7 @@ const date = (value: unknown) => value ? <LocalDateTime value={value as string |
 export async function Dossier({ id, type }: { id: string; type: "player" | "guild" | "city" }) {
   const data = await loadParticipant(id, type);
   if (!data) notFound();
-  const latest = new Map<string, Record<string, unknown>>();
-  for (const row of data.history) if (!latest.has(row.leaderboard_id)) latest.set(row.leaderboard_id, row);
+  const latest = latestLeaderboardRows(data.history);
   // GCW standings arrive newest-period-first per board; index them for the panel.
   const gcwByBoard = new Map<string, typeof data.gcwStandings>();
   for (const row of data.gcwStandings ?? []) {
