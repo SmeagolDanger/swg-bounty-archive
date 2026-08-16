@@ -16,7 +16,7 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/encounters` | Immutable encounter log with name, outcome, payout, and date filters (`tz`-aware) |
+| `GET /api/encounters` | Immutable encounter log with name, outcome, payout, and date filters (`tz`-aware); rows include `hunter_stats` (current-cycle + archive-total record for the hunter) |
 | `GET /api/hunters` | Hunter directory with board ranks and derived archive records |
 | `GET /api/hunters/{id}` | Full dossier: history, encounters, opponents, rivalries, summaries, weekly GCW standings (`gcwStandings`), Officers' Salute commission (`officerSalute`) |
 | `GET /api/guilds` | Guild standings combined with roster-derived activity |
@@ -33,7 +33,7 @@ Parameter tables, defaults, and worked examples for each endpoint are documented
 ## Example
 
 ```bash
-curl -s "https://YOUR-HOST/api/encounters?outcome=KILL&minCredits=50000" | jq '.rows[0]'
+curl -s "https://jawatracks.com/api/encounters?outcome=KILL&minCredits=50000" | jq '.rows[0]'
 ```
 
 ```json
@@ -42,6 +42,12 @@ curl -s "https://YOUR-HOST/api/encounters?outcome=KILL&minCredits=50000" | jq '.
   "outcome": "KILL",
   "hunter_name": "-Eternal-",
   "target_name": "Eahi",
-  "credits": 29549
+  "credits": 29549,
+  "hunter_stats": {
+    "cycle_starts_at": "2026-08-15T22:00:00.000Z",
+    "cycle_ends_at": "2026-08-22T22:00:00.000Z",
+    "cycle_encounters": 2, "cycle_kills": 2, "cycle_deaths": 0, "cycle_failures": 0, "cycle_credits": 45082,
+    "overall_encounters": 3, "overall_kills": 3, "overall_deaths": 0, "overall_failures": 0, "overall_credits": 68025
+  }
 }
 ```

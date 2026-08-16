@@ -22,7 +22,7 @@ const endpoints: Endpoint[] = [
       ["tz", "IANA timezone for day bounds (default UTC)"],
       ["page / pageSize", "pagination; pageSize 10–100 (default 25)"],
     ],
-    returns: "{ rows, total, page, pageSize } — each row has event_at, outcome, hunter_name, target_name, credits, fingerprint, and participant ids when the name matches a leaderboard identity",
+    returns: "{ rows, total, page, pageSize } — each row has event_at, outcome, hunter_name, target_name, credits, fingerprint, participant ids when the name matches a leaderboard identity, and hunter_stats (current-cycle and archive-total kills, deaths, failures, encounters, credits for the hunter; null when no record exists)",
   },
   {
     path: "/api/hunters",
@@ -99,7 +99,7 @@ const endpoints: Endpoint[] = [
     path: "/api/dashboard",
     summary: "Aggregate snapshot: totals, recent encounters, top boards, 30-day activity series.",
     parameters: [["—", "no parameters"]],
-    returns: "{ stats, recent, top, activity, activeGroups, ingestion }",
+    returns: "{ stats, recent, top, activity, activeGroups, ingestion } — recent rows carry the same hunter_stats object as /api/encounters",
   },
   {
     path: "/api/health",
@@ -109,7 +109,7 @@ const endpoints: Endpoint[] = [
   },
 ];
 
-const exampleRequest = `curl -s "https://YOUR-HOST/api/encounters?outcome=KILL&minCredits=50000&page=1"`;
+const exampleRequest = `curl -s "https://jawatracks.com/api/encounters?outcome=KILL&minCredits=50000&page=1"`;
 const exampleResponse = `{
   "rows": [
     {
