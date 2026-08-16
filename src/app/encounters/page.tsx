@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getEncounters } from "@/lib/data";
 import { siteUrl } from "@/lib/site";
-import { LocalDateTime } from "@/components/local-date-time";
+import { EncounterList } from "@/components/encounter-list";
 import { TimezoneField } from "@/components/timezone-field";
 
 // The encounter archive is also served at "/"; point both at one canonical URL when configured.
@@ -33,8 +33,8 @@ export default async function EncountersPage({ searchParams }: { searchParams: P
       <input className="field" name="from" type="date" defaultValue={filters.from} aria-label="From date" title="Interpreted in your local timezone"/><input className="field" name="to" type="date" defaultValue={filters.to} aria-label="To date" title="Interpreted in your local timezone"/>
       <TimezoneField/>
     </form>
-    <div className="panel"><div className="panel-header"><h3>{data.total.toLocaleString("en-US")} records</h3><span className="chip">Newest first</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Timestamp</th><th>Hunter</th><th>Outcome</th><th>Target</th><th className="numeric">Payout</th></tr></thead><tbody>{data.rows.map((row) => <tr key={row.id}><td data-label="Timestamp" className="card-title"><LocalDateTime value={row.event_at}/></td><td data-label="Hunter">{row.hunter_participant_id ? <Link className="entity-link" href={`/hunter/${row.hunter_participant_id}`}>{row.hunter_name}</Link> : row.hunter_name}</td><td data-label="Outcome"><span className={`status ${row.outcome.toLowerCase()}`}>{row.outcome === "KILL" ? "Collected" : "Failed"}</span></td><td data-label="Target">{row.target_participant_id ? <Link className="entity-link" href={`/hunter/${row.target_participant_id}`}>{row.target_name}</Link> : row.target_name}</td><td data-label="Payout" className="numeric credits">{row.outcome === "KILL" ? `${Number(row.credits).toLocaleString("en-US")} cr` : "—"}</td></tr>)}</tbody></table></div>
-      {!data.rows.length && <div className="empty">No encounters match these filters.</div>}
+    <div className="panel"><div className="panel-header"><h3>{data.total.toLocaleString("en-US")} records</h3><span className="chip">Tap a row for hunter stats</span></div>
+      {data.rows.length ? <EncounterList rows={data.rows} variant="archive"/> : <div className="empty">No encounters match these filters.</div>}
       <div className="pager"><span>Page {page} of {pageCount}</span><span>{page > 1 && <Link className="button secondary" href={href(page-1)}>Previous</Link>} {page < pageCount && <Link className="button secondary" href={href(page+1)}>Next</Link>}</span></div>
     </div>
   </div>;

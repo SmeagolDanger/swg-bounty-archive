@@ -38,6 +38,61 @@ export function isTimeZone(value: string): boolean {
 }
 const timeZoneOf = (value: string | undefined) => value && isTimeZone(value) ? value : "UTC";
 
+export interface EncounterHunterStats {
+  cycle_starts_at: Date | string | null;
+  cycle_ends_at: Date | string | null;
+  cycle_encounters: number;
+  cycle_kills: number;
+  cycle_deaths: number;
+  cycle_failures: number;
+  cycle_credits: number;
+  overall_encounters: number;
+  overall_kills: number;
+  overall_deaths: number;
+  overall_failures: number;
+  overall_credits: number;
+}
+
+async function attachHunterStats<T extends Record<string, unknown>>(encounters: T[]): Promise<Array<T & { hunter_stats: EncounterHunterStats | null }>> {
+  const hunterKeys = [...new Set(encounters.map((row) => String(row.hunter_name ?? "").trim().toLocaleLowerCase()).filter(Boolean))];
+  if (!hunterKeys.length) return encounters.map((row) => ({ ...row, hunter_stats: null }));
+
+  const stats = await pool.query<EncounterHunterStats & { hunter_key: string }>(`WITH current_cycle AS (
+      SELECT lp.starts_at,lp.ends_at
+      FROM leaderboard_snapshots s
+      JOIN leaderboard_periods lp ON lp.id=s.period_id
+      WHERE s.subject='player' AND s.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST}) AND lp.source_period_key='CURRENT'
+      ORDER BY s.observed_at DESC
+      LIMIT 1
+    ), actor_events AS (
+      SELECT lower(hunter_name) AS hunter_key,event_at,1 AS hunter_encounter,
+        (outcome='KILL')::int AS kill,(outcome='FAILED')::int AS failure,0 AS death,
+        CASE WHEN outcome='KILL' THEN credits ELSE 0 END AS credits
+      FROM bounty_encounters WHERE lower(hunter_name)=ANY($1::text[])
+      UNION ALL
+      SELECT lower(target_name) AS hunter_key,event_at,0 AS hunter_encounter,
+        0 AS kill,0 AS failure,(outcome='KILL')::int AS death,0 AS credits
+      FROM bounty_encounters WHERE lower(target_name)=ANY($1::text[])
+    )
+    SELECT ae.hunter_key,
+      cc.starts_at AS cycle_starts_at,cc.ends_at AS cycle_ends_at,
+      coalesce(sum(ae.hunter_encounter) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_encounters,
+      coalesce(sum(ae.kill) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_kills,
+      coalesce(sum(ae.death) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_deaths,
+      coalesce(sum(ae.failure) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_failures,
+      coalesce(sum(ae.credits) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::float8 AS cycle_credits,
+      sum(ae.hunter_encounter)::int AS overall_encounters,
+      sum(ae.kill)::int AS overall_kills,
+      sum(ae.death)::int AS overall_deaths,
+      sum(ae.failure)::int AS overall_failures,
+      coalesce(sum(ae.credits),0)::float8 AS overall_credits
+    FROM actor_events ae
+    LEFT JOIN current_cycle cc ON true
+    GROUP BY ae.hunter_key,cc.starts_at,cc.ends_at`, [hunterKeys]);
+  const byHunter = new Map(stats.rows.map(({ hunter_key, ...row }) => [hunter_key, row]));
+  return encounters.map((row) => ({ ...row, hunter_stats: byHunter.get(String(row.hunter_name ?? "").trim().toLocaleLowerCase()) ?? null }));
+}
+
 export async function getDashboard() {
   const [stats, recent, top, activity, activeGroups, ingestion] = await Promise.all([
     pool.query(`SELECT
@@ -78,7 +133,7 @@ export async function getDashboard() {
     pool.query(`SELECT max(response_received_at) FILTER(WHERE processing_status='PROCESSED') AS last_verified,
       (SELECT count(*)::int FROM ingestion_errors WHERE resolved_at IS NULL) AS failed_ingestions FROM api_ingestions`),
   ]);
-  return { stats: stats.rows[0], recent: recent.rows, top: top.rows, activity: activity.rows, activeGroups: activeGroups.rows, ingestion: ingestion.rows[0] };
+  return { stats: stats.rows[0], recent: await attachHunterStats(recent.rows), top: top.rows, activity: activity.rows, activeGroups: activeGroups.rows, ingestion: ingestion.rows[0] };
 }
 
 export interface EncounterFilters {
@@ -120,7 +175,7 @@ export async function getEncounters(filters: EncounterFilters) {
      ${where} ORDER BY be.event_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
   );
-  return { rows: rows.rows, total: count.rows[0].count as number, page, pageSize };
+  return { rows: await attachHunterStats(rows.rows), total: count.rows[0].count as number, page, pageSize };
 }
 
 export interface HunterDirectoryFilters {
@@ -360,7 +415,7 @@ export async function getRivalryDetail(hunterId: string, opponentName: string) {
   if (!events.rows.length) return null;
   const metrics = deriveRivalryMetrics(events.rows.map((event) => ({ outcome: event.outcome, hunterName: event.hunter_name, targetName: event.target_name, credits: Number(event.credits) })), hunter.current_name);
   const opponent = await pool.query("SELECT id,current_name,guild_abbreviation FROM participants WHERE participant_type='player' AND lower(current_name)=lower($1) ORDER BY last_seen_at DESC LIMIT 1", [opponentName]);
-  return { hunter, opponent: opponent.rows[0] ?? { id: null, current_name: opponentName, guild_abbreviation: null }, events: [...events.rows].reverse(),
+  return { hunter, opponent: opponent.rows[0] ?? { id: null, current_name: opponentName, guild_abbreviation: null }, events: await attachHunterStats([...events.rows].reverse()),
     summary: { encounters: metrics.encounters, hunterWins: metrics.playerWins, opponentWins: metrics.opponentWins, hunterClaims: metrics.playerClaims,
       hunterSurvivals: metrics.playerSurvivals, hunterCredits: metrics.playerCredits, revengeKills: metrics.revengeKills,
       winRate: metrics.winRate, firstEventAt: events.rows[0].event_at, lastEventAt: events.rows.at(-1).event_at } };
@@ -665,7 +720,7 @@ export async function getParticipant(id: string, expectedType?: "player" | "guil
     getGcwStandings(id),
     getOfficerSalute(id),
   ]);
-  return { participant, history: history.rows, encounters: encounters.rows, opponents: opponents.rows,
+  return { participant, history: history.rows, encounters: await attachHunterStats(encounters.rows), opponents: opponents.rows,
     rivalries, hunterSummary: hunterSummary.rows[0], targetSummary: targetSummary.rows[0], dailyActivity: dailyActivity.rows, guildCompetition: null,
     gcwStandings, gcwWins: [], officerSalute, officerCorps: null };
 }
