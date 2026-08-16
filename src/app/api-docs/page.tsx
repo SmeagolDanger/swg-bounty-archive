@@ -22,7 +22,7 @@ const endpoints: Endpoint[] = [
       ["tz", "IANA timezone for day bounds (default UTC)"],
       ["page / pageSize", "pagination; pageSize 10–100 (default 25)"],
     ],
-    returns: "{ rows, total, page, pageSize } — each row has event_at, outcome, hunter_name, target_name, credits, fingerprint, participant ids when the name matches a leaderboard identity, and hunter_stats (current-cycle and archive-total kills, deaths, failures, encounters, credits for the hunter; null when no record exists)",
+    returns: "{ rows, total, page, pageSize } — each row has event_at, outcome, hunter_name, target_name, credits, fingerprint, participant ids when the name matches a leaderboard identity, and hunter_stats (current-cycle and archive-total kills, deaths, failures, encounters, credits for the hunter; deaths include failed contracts and times killed while targeted; null when no record exists)",
   },
   {
     path: "/api/hunters",

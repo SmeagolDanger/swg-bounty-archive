@@ -51,3 +51,5 @@ curl -s "https://jawatracks.com/api/encounters?outcome=KILL&minCredits=50000" | 
   }
 }
 ```
+
+`cycle_deaths` and `overall_deaths` count both failed contracts by the hunter and successful claims against that player while they were the target. `cycle_failures` and `overall_failures` remain hunter-role failures only; `cycle_encounters` and `overall_encounters` remain hunter-role contract attempts, which are the denominators for claim rate.

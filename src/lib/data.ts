@@ -66,7 +66,7 @@ async function attachHunterStats<T extends Record<string, unknown>>(encounters: 
       LIMIT 1
     ), actor_events AS (
       SELECT lower(hunter_name) AS hunter_key,event_at,1 AS hunter_encounter,
-        (outcome='KILL')::int AS kill,(outcome='FAILED')::int AS failure,0 AS death,
+        (outcome='KILL')::int AS kill,(outcome='FAILED')::int AS failure,(outcome='FAILED')::int AS death,
         CASE WHEN outcome='KILL' THEN credits ELSE 0 END AS credits
       FROM bounty_encounters WHERE lower(hunter_name)=ANY($1::text[])
       UNION ALL
