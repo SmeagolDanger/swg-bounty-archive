@@ -50,9 +50,11 @@ The current public SWG endpoints do not expose usable pagination. The collector 
 
 Raw payloads, response/request headers, cookies, authorization values, database URLs, passwords, tokens, and secrets are never placed in operational events.
 
-## APL investigation queries
+## APL investigation queries — Query tab only
 
 Replace the dataset name if necessary.
+
+> **Do not paste the queries in this section into a Match Monitor.** These are interactive investigation queries for Axiom's general **Query** tab and intentionally use operators such as `order by` and `take` that Match Monitors reject. For alert creation, skip to [Recommended monitors](#recommended-monitors) and use the complete query shown for each monitor.
 
 Before creating monitors, confirm that Axiom has received at least one application event:
 
@@ -61,9 +63,9 @@ Before creating monitors, confirm that Axiom has received at least one applicati
 | getschema
 ```
 
-The result should include `event`, `status`, `service`, and `environment`. If `event` is absent, run the safe test under **Safe testing and operations** and then expand the query time range. Axiom validates field names against the dataset schema, so a direct `where event == ...` query fails until the field has been ingested. The monitor queries below use `column_ifexists()` so they can still be saved before the first event arrives.
+The result should include `event`, `status`, `service`, and `environment`. If `event` is absent, run the safe test under **Safe testing and operations** and then expand the query time range. Axiom validates field names against the dataset schema, so create the monitors after these core fields have arrived. The monitor projections use `column_ifexists()` only for optional failure fields that may not exist yet.
 
-### 1. Failed ingestion
+### Query tab 1: Failed ingestion
 
 ```apl
 ['outer-rim-ledger-production']
@@ -71,7 +73,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 2. Partial ingestion
+### Query tab 2: Partial ingestion
 
 ```apl
 ['outer-rim-ledger-production']
@@ -79,7 +81,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 3. Schema/source changes
+### Query tab 3: Schema/source changes
 
 ```apl
 ['outer-rim-ledger-production']
@@ -88,7 +90,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 4. Pagination failures
+### Query tab 4: Pagination failures
 
 ```apl
 ['outer-rim-ledger-production']
@@ -97,7 +99,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 5. API errors and rate limits
+### Query tab 5: API errors and rate limits
 
 ```apl
 ['outer-rim-ledger-production']
@@ -106,7 +108,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 6. Database failures
+### Query tab 6: Database failures
 
 ```apl
 ['outer-rim-ledger-production']
@@ -115,7 +117,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 7. Rejected records
+### Query tab 7: Rejected records
 
 ```apl
 ['outer-rim-ledger-production']
@@ -124,7 +126,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 8. Recent whole runs
+### Query tab 8: Recent whole runs
 
 ```apl
 ['outer-rim-ledger-production']
@@ -134,7 +136,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | take 50
 ```
 
-### 9. Runs for a specific source
+### Query tab 9: Runs for a specific source
 
 ```apl
 ['outer-rim-ledger-production']
@@ -142,7 +144,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time desc
 ```
 
-### 10. One run ID
+### Query tab 10: One run ID
 
 ```apl
 ['outer-rim-ledger-production']
@@ -150,7 +152,7 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 | order by _time asc
 ```
 
-### 11. Sources without a recent successful ingestion
+### Query tab 11: Sources without a recent successful ingestion
 
 ```apl
 ['outer-rim-ledger-production']
@@ -163,7 +165,11 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 
 ## Recommended monitors
 
-Create these under **Monitors → New monitor** and attach the Discord notifier described below. Threshold monitor queries must end with `summarize`.
+**Alert editor queries:** These are the queries to use for alerts. Create them under **Monitors → New monitor** and attach the Discord notifier described below. Paste each complete dataset-qualified query into the advanced APL editor, including the opening `['outer-rim-ledger-production']` line. Do not add `order by`, `take`, `summarize`, or any other operator to a Match Monitor; only `where`, `project`, `extend`, and `parse` are accepted. Threshold monitor queries must end with `summarize`.
+
+`No events in time range` is an expected preview result when the selected interval contains no failure of that type; it is not a query error. Expand the preview range only if you expect an older matching event. After saving the monitors, use the synthetic events under **Safe testing and operations** to verify delivery without altering archive data.
+
+[Match monitors](https://axiom.co/docs/monitor-data/match-monitors) continuously filter new events and send one notification for each match. They do not have frequency or range settings. Axiom currently limits each match monitor to 10 notifications per minute and 500 per day. The `project` clauses below deliberately keep Discord messages compact, while `column_ifexists()` safely handles optional fields that may not exist until the first event of that failure type arrives.
 
 ### Ingestion failed
 
@@ -171,10 +177,22 @@ Create these under **Monitors → New monitor** and attach the Discord notifier 
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | extend event_name=tostring(column_ifexists('event', '')), run_status=tostring(column_ifexists('status', ''))
-  | where event_name == 'ingestion_run_complete' and run_status == 'failed'
+  | where event == 'ingestion_run_complete' and status == 'failed'
+  | extend expected_count=tolong(expected_records), received_count=tolong(received_records)
+  | extend missing_count=max_of(expected_count - received_count, 0)
+  | project _time,
+      source,
+      run_id,
+      status,
+      reason=tostring(column_ifexists('reason', '')),
+      expected_records=expected_count,
+      received_records=received_count,
+      missing_records=missing_count,
+      rejected_records,
+      failed_sources,
+      error_message=tostring(column_ifexists('error_message', ''))
   ```
-- Frequency/range: every `1` minute over `5` minutes
+- Notification behavior: once for every matching failed run
 
 ### Ingestion partial
 
@@ -182,10 +200,22 @@ Create these under **Monitors → New monitor** and attach the Discord notifier 
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | extend event_name=tostring(column_ifexists('event', '')), run_status=tostring(column_ifexists('status', ''))
-  | where event_name == 'ingestion_run_complete' and run_status == 'partial'
+  | where event == 'ingestion_run_complete' and status == 'partial'
+  | extend expected_count=tolong(expected_records), received_count=tolong(received_records)
+  | extend missing_count=max_of(expected_count - received_count, 0)
+  | project _time,
+      source,
+      run_id,
+      status,
+      reason=tostring(column_ifexists('reason', '')),
+      expected_records=expected_count,
+      received_records=received_count,
+      missing_records=missing_count,
+      rejected_records,
+      partial_sources,
+      failed_sources
   ```
-- Frequency/range: every `1` minute over `5` minutes
+- Notification behavior: once for every matching partial run
 
 ### Source/schema changed
 
@@ -193,10 +223,18 @@ Create these under **Monitors → New monitor** and attach the Discord notifier 
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | extend event_name=tostring(column_ifexists('event', ''))
-  | where event_name in ('source_schema_changed', 'source_fields_changed')
+  | where event in ('source_schema_changed', 'source_fields_changed')
+  | project _time,
+      event,
+      source,
+      run_id,
+      status=tostring(column_ifexists('status', '')),
+      missing_fields=tostring(column_ifexists('missing_fields', '[]')),
+      unexpected_fields=tostring(column_ifexists('unexpected_fields', '[]')),
+      changed_types=tostring(column_ifexists('changed_types', '[]')),
+      message=tostring(column_ifexists('message', ''))
   ```
-- Frequency/range: every `1` minute over `5` minutes
+- Notification behavior: once for every matching source/schema change
 
 ### Pagination incomplete
 
@@ -204,10 +242,19 @@ Create these under **Monitors → New monitor** and attach the Discord notifier 
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | extend event_name=tostring(column_ifexists('event', ''))
-  | where event_name == 'pagination_incomplete'
+  | where event == 'pagination_incomplete'
+  | extend expected_count=tolong(expected_records), received_count=tolong(received_records)
+  | extend missing_count=max_of(expected_count - received_count, 0)
+  | project _time,
+      source,
+      run_id,
+      status,
+      reason=tostring(column_ifexists('reason', 'pagination_incomplete')),
+      expected_records=expected_count,
+      received_records=received_count,
+      missing_records=missing_count
   ```
-- Frequency/range: every `1` minute over `5` minutes
+- Notification behavior: once for every matching pagination failure
 
 ### Database failure
 
@@ -215,20 +262,25 @@ Create these under **Monitors → New monitor** and attach the Discord notifier 
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | extend event_name=tostring(column_ifexists('event', ''))
-  | where event_name == 'database_transaction_failed'
+  | where event == 'database_transaction_failed'
+  | project _time,
+      source,
+      run_id,
+      ingestion_id=tostring(column_ifexists('ingestion_id', '')),
+      reason=tostring(column_ifexists('reason', '')),
+      error_type=tostring(column_ifexists('error_type', '')),
+      error_message=tostring(column_ifexists('error_message', ''))
   ```
-- Frequency/range: every `1` minute over `5` minutes
+- Notification behavior: once for every matching database failure
 
 ### No successful ingestion within the expected interval
 
-- Type: threshold
+- Type: [threshold monitor](https://axiom.co/docs/monitor-data/threshold-monitors)
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | extend event_name=tostring(column_ifexists('event', '')), run_status=tostring(column_ifexists('status', ''))
-  | where event_name == 'ingestion_run_complete'
-  | summarize successful_runs=countif(run_status == 'success')
+  | where event == 'ingestion_run_complete'
+  | summarize successful_runs=countif(status == 'success')
   ```
 - Operator/threshold: below `1`
 - Frequency/range: every `5` minutes over `10` minutes
@@ -240,7 +292,7 @@ After enough history exists, add anomaly monitors for unusually high `duplicate_
 
 ## Discord notifier
 
-Axiom supports Discord directly; no custom bot belongs in this repository.
+Axiom supports [Discord notifiers](https://axiom.co/docs/monitor-data/discord-notifier) directly; no custom bot belongs in this repository.
 
 1. In Discord, open the target channel's settings, choose **Integrations → Webhooks → New Webhook**, select the channel, and copy the webhook URL.
 2. In Axiom, open **Monitors → Manage notifiers → New notifier**.
@@ -261,6 +313,15 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec worker
 ```
 
 Use a temporary match monitor for `source == 'monitoring_test'`, confirm Discord delivery, then delete the monitor. Do not test by changing or deleting production archive data.
+
+To test the production failed-ingestion match monitor end to end, intentionally emit a synthetic event with the same event contract. This triggers the alert but does not create or modify an ingestion run:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml exec worker \
+  ./node_modules/.bin/tsx -e 'import { randomUUID } from "node:crypto"; import { log } from "./src/lib/observability/logger.ts"; import { flushAxiom } from "./src/lib/observability/axiom.ts"; void (async () => { log.error("ingestion_run_complete", {run_id:"monitoring-test-"+randomUUID(),run_type:"manual",source:"monitoring_test",status:"failed",reason:"manual_monitor_test",expected_records:1,received_records:0,rejected_records:0,failed_sources:1}); await flushAxiom(); })();'
+```
+
+Confirm the Discord message identifies `source` as `monitoring_test` and `reason` as `manual_monitor_test`. The event remains in Axiom as an explicit monitoring test; it never enters PostgreSQL business history.
 
 If Axiom is unavailable, valid ingestion continues. Inspect `docker compose logs worker`, `/api/health`, `/admin/ingestion`, and the PostgreSQL `ingestion_runs`, `ingestion_errors`, and `data_quality_events` records while hosted delivery recovers.
 
