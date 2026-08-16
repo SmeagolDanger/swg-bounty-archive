@@ -27,7 +27,7 @@ function HunterStats({ row }: { row: Record<string, unknown> }) {
   return <div className="encounter-detail">
     <div className="encounter-detail-head">
       <div><span>Hunter record</span><strong>{String(row.hunter_name)}</strong></div>
-      <small>Hunter-role contracts in this archive</small>
+      <small>Deaths include failed contracts and times killed while targeted</small>
     </div>
     <div className="encounter-stat-groups">
       <section className="encounter-stat-group">

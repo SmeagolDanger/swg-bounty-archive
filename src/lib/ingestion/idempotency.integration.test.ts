@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { pool } from "@/lib/db/client";
+import { getEncounters } from "@/lib/data";
 import { ingestFixture } from "./pipeline";
 
 const dbEnabled = process.env.RUN_DB_TESTS === "1";
@@ -88,6 +89,13 @@ suite("database idempotency and concurrent ingestion", () => {
       (SELECT count(*)::int FROM bounty_encounters WHERE source_ingestion_id IN (SELECT id FROM api_ingestions WHERE run_id=$1)) AS encounters,
       (SELECT count(*)::int FROM bounty_aggregate_snapshots WHERE source_ingestion_id IN (SELECT id FROM api_ingestions WHERE run_id=$1)) AS aggregates`,[runId]);
     expect(bountyCounts.rows[0]).toEqual({encounters:2,aggregates:1});
+    const encounterFeed = await getEncounters({ q: `Test Hunter ${suffix}`, pageSize: 10 });
+    expect(encounterFeed.rows[0].hunter_stats).toMatchObject({
+      overall_encounters: 2,
+      overall_kills: 1,
+      overall_failures: 1,
+      overall_deaths: 1,
+    });
     const search=await pool.query("SELECT current_name FROM participants WHERE current_name ILIKE $1 AND source_participant_id = ANY($2::text[])",["%test hunter%",participantIds]);
     expect(search.rowCount).toBe(2);
   });
