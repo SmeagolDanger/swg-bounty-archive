@@ -31,7 +31,7 @@ export default async function WeeklyReportPage({ searchParams }: { searchParams:
       <div className="report-title-row"><div><h1>Weekly cycle report</h1><p>A bounded report using the exact weekly dates supplied by the SWG Legends leaderboard source.</p></div><ReportExportButton/></div>
     </header>
 
-    {cycles.length > 0 && <ReportCycleSelect cycles={cycles} selected={selectedStart}/>}
+    {cycles.length > 0 && <div data-export-exclude><ReportCycleSelect cycles={cycles} selected={selectedStart}/></div>}
 
     {!report.cycle || !report.summary ? <div className="empty">This weekly cycle has not been archived yet.</div> : <>
       <section className="report-hero">
