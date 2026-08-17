@@ -13,7 +13,7 @@ Data originates from [SWG Legends](https://swglegends.com/). This project is not
 - Immutable changed-state snapshots, stable participant IDs, deterministic encounter fingerprints, database uniqueness constraints, revisions for fixed historical rows, and schema-change alerts.
 - Resumable public-history backfill, conservative polling worker, retry/backoff, timeouts, rate-limit handling, graceful shutdown, heartbeat health check, reconciliation, and diagnostics.
 - Optional Axiom observability through sanitized structured events, background batching, explicit partial-ingestion detection, typed schema diffs, and provider-neutral health monitoring.
-- Encounter-archive home page with search/filter/pagination, leaderboards, hunter comparison, rivalry intelligence and timelines, guild competition and current-roster analytics, player/guild/city dossiers, charts, global trigram search, public raw-response search, protected ingestion console, and raw payload viewer.
+- Encounter-archive home page with search/filter/pagination, viewable and PDF-exportable exact-cycle reports, leaderboards, hunter comparison, rivalry intelligence and timelines, guild competition and current-roster analytics, player/guild/city dossiers, charts, global trigram search, public raw-response search, protected ingestion console, and raw payload viewer.
 - Documented read-only public JSON API with CORS for community projects, per-IP rate limiting, and cache headers — see [docs/public-api.md](docs/public-api.md) and `/api-docs` on the running site.
 - Unit tests plus a PostgreSQL integration test that imports the same fixture 100 times concurrently.
 - Docker Compose, migration runner, backup/restore/verification scripts, and no proprietary service dependency.

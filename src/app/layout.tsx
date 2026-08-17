@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import type { Viewport } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Exo_2, JetBrains_Mono, Rajdhani } from "next/font/google";
 import { GlobalSearch } from "@/components/global-search";
 import { MobileNavigation } from "@/components/mobile-nav";
 import { NavLinks } from "@/components/nav-links";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
-const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
-const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
+const display = Rajdhani({ variable: "--font-display", subsets: ["latin"], weight: ["500", "600", "700"] });
+const sans = Exo_2({ variable: "--font-sans", subsets: ["latin"], weight: ["400", "500", "600"] });
+const mono = JetBrains_Mono({ variable: "--font-mono", subsets: ["latin"], weight: ["400", "500", "700"] });
 
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
@@ -17,21 +18,21 @@ export const metadata: Metadata = {
   description: "An independent, lossless historical archive of public SWG Legends Bounty Hunter activity.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#06090d" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#070810" };
 
-const nav = [["Encounters", "/"], ["Hunters", "/hunters"], ["Guilds", "/guilds"], ["Raw data", "/raw-data"], ["Compare", "/compare"]] as const;
+const nav = [["Encounters", "/"], ["Hunters", "/hunters"], ["Guilds", "/guilds"], ["Reports", "/reports/weekly"], ["Raw data", "/raw-data"], ["Compare", "/compare"]] as const;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <div className="scanlines" aria-hidden="true" />
         <header className="site-header">
           <div className="shell nav-shell">
             <Link href="/" className="brand" aria-label="Outer Rim Ledger home">
-              <span className="brand-mark">OR</span>
-              <span><b>Outer Rim Ledger</b><small>Bounty intelligence archive</small></span>
+              <span className="brand-mark">JT</span>
+              <span><b>Outer Rim Ledger</b><small>Jawa Tracks // public archive</small></span>
             </Link>
             <nav className="desktop-nav" aria-label="Primary navigation"><NavLinks links={nav} /></nav>
             <div className="desktop-search"><GlobalSearch /></div>

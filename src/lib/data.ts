@@ -136,6 +136,118 @@ export async function getDashboard() {
   return { stats: stats.rows[0], recent: await attachHunterStats(recent.rows), top: top.rows, activity: activity.rows, activeGroups: activeGroups.rows, ingestion: ingestion.rows[0] };
 }
 
+export type WeeklyReportPeriod = (typeof PERIODS)[number];
+
+export async function getWeeklyReport(period: WeeklyReportPeriod = "CURRENT", cycleStart?: string) {
+  const cycleResult = await pool.query(`SELECT lp.starts_at,lp.ends_at,
+      array_agg(DISTINCT lp.source_period_key ORDER BY lp.source_period_key) AS source_period_keys,
+      max(s.source_fetched_at) AS verified_at
+    FROM leaderboard_periods lp
+    JOIN leaderboard_snapshots s ON s.period_id=lp.id
+    WHERE lp.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST})
+    GROUP BY lp.starts_at,lp.ends_at
+    ORDER BY lp.starts_at DESC,verified_at DESC`);
+  const availableCycles = cycleResult.rows;
+  const requestedStart = cycleStart ? Date.parse(cycleStart) : Number.NaN;
+  const selected = (Number.isFinite(requestedStart)
+    ? availableCycles.find((row) => new Date(row.starts_at).getTime() === requestedStart)
+    : undefined) ?? availableCycles.find((row) => (row.source_period_keys as string[]).includes(period));
+  if (!selected) {
+    return { period, cycle: null, availableCycles, summary: null, topHunters: [], topTargets: [], leaders: [], activity: [], largestClaim: null };
+  }
+  const cycle = {
+    source_period_key: (selected.source_period_keys as string[])[0] ?? period,
+    starts_at: selected.starts_at,
+    ends_at: selected.ends_at,
+    verified_at: selected.verified_at,
+  };
+
+  const bounds = [cycle.starts_at, cycle.ends_at];
+  const [summary, topHunters, topTargets, leaders, activity, largestClaim] = await Promise.all([
+    pool.query(`SELECT count(*)::int AS encounters,
+        count(*) FILTER(WHERE outcome='KILL')::int AS claims,
+        count(*) FILTER(WHERE outcome='FAILED')::int AS failures,
+        coalesce(sum(credits) FILTER(WHERE outcome='KILL'),0)::float8 AS credits,
+        coalesce(avg(credits) FILTER(WHERE outcome='KILL'),0)::float8 AS average_bounty,
+        count(DISTINCT lower(hunter_name))::int AS active_hunters,
+        count(DISTINCT lower(target_name))::int AS unique_targets,
+        count(DISTINCT event_at::date)::int AS active_days
+      FROM bounty_encounters WHERE event_at >= $1 AND event_at < $2`, bounds),
+    pool.query(`WITH actor_events AS (
+        SELECT lower(hunter_name) AS hunter_key,hunter_name AS display_name,1 AS encounter,
+          (outcome='KILL')::int AS kill,(outcome='FAILED')::int AS failure,
+          (outcome='FAILED')::int AS death,CASE WHEN outcome='KILL' THEN credits ELSE 0 END AS credits
+        FROM bounty_encounters WHERE event_at >= $1 AND event_at < $2
+        UNION ALL
+        SELECT lower(target_name),target_name,0,0,0,(outcome='KILL')::int,0
+        FROM bounty_encounters WHERE event_at >= $1 AND event_at < $2
+      ), totals AS (
+        SELECT hunter_key,min(display_name) AS hunter_name,sum(encounter)::int AS encounters,
+          sum(kill)::int AS kills,sum(failure)::int AS failures,sum(death)::int AS deaths,
+          coalesce(sum(credits),0)::float8 AS credits
+        FROM actor_events GROUP BY hunter_key
+      )
+      SELECT t.*,p.id AS participant_id,p.guild_abbreviation
+      FROM totals t LEFT JOIN LATERAL (
+        SELECT id,guild_abbreviation FROM participants
+        WHERE participant_type='player' AND lower(current_name)=t.hunter_key
+        ORDER BY last_seen_at DESC LIMIT 1
+      ) p ON true
+      WHERE t.encounters > 0
+      ORDER BY t.kills DESC,t.credits DESC,t.encounters DESC,t.hunter_name LIMIT 10`, bounds),
+    pool.query(`SELECT min(be.target_name) AS target_name,count(*)::int AS targeted,
+        count(*) FILTER(WHERE be.outcome='KILL')::int AS killed,
+        count(*) FILTER(WHERE be.outcome='FAILED')::int AS survived,
+        player.id AS participant_id
+      FROM bounty_encounters be
+      LEFT JOIN LATERAL (
+        SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.target_name)
+        ORDER BY last_seen_at DESC LIMIT 1
+      ) player ON true
+      WHERE be.event_at >= $1 AND be.event_at < $2
+      GROUP BY lower(be.target_name),player.id
+      ORDER BY targeted DESC,killed DESC,target_name LIMIT 8`, bounds),
+    pool.query(`WITH latest AS (
+        SELECT DISTINCT ON (s.leaderboard_id) s.id,s.leaderboard_id,s.value_type,s.source_fetched_at
+        FROM leaderboard_snapshots s
+        JOIN leaderboard_periods lp ON lp.id=s.period_id
+        WHERE s.subject='player' AND s.leaderboard_id IN (${BOUNTY_BOARD_SQL_LIST})
+          AND lp.starts_at=$1 AND lp.ends_at=$2
+        ORDER BY s.leaderboard_id,s.observed_at DESC
+      )
+      SELECT l.leaderboard_id,l.value_type,l.source_fetched_at,e.rank,e.score::float8 AS score,e.score_raw,
+        p.id AS participant_id,p.current_name,p.guild_abbreviation
+      FROM latest l JOIN leaderboard_entries e ON e.snapshot_id=l.id
+      JOIN participants p ON p.id=e.participant_id
+      WHERE e.rank=1 ORDER BY l.leaderboard_id`, bounds),
+    pool.query(`SELECT event_at::date::text AS day,count(*)::int AS encounters,
+        count(*) FILTER(WHERE outcome='KILL')::int AS claims,
+        count(*) FILTER(WHERE outcome='FAILED')::int AS failures,
+        coalesce(sum(credits) FILTER(WHERE outcome='KILL'),0)::float8 AS credits
+      FROM bounty_encounters WHERE event_at >= $1 AND event_at < $2
+      GROUP BY 1 ORDER BY 1`, bounds),
+    pool.query(`SELECT be.id,be.event_at,be.hunter_name,be.target_name,be.credits,
+        hunter.id AS hunter_participant_id,target.id AS target_participant_id
+      FROM bounty_encounters be
+      LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.hunter_name) ORDER BY last_seen_at DESC LIMIT 1) hunter ON true
+      LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.target_name) ORDER BY last_seen_at DESC LIMIT 1) target ON true
+      WHERE be.event_at >= $1 AND be.event_at < $2 AND be.outcome='KILL'
+      ORDER BY be.credits DESC,be.event_at DESC LIMIT 1`, bounds),
+  ]);
+
+  return {
+    period,
+    cycle,
+    availableCycles,
+    summary: summary.rows[0],
+    topHunters: topHunters.rows,
+    topTargets: topTargets.rows,
+    leaders: leaders.rows,
+    activity: activity.rows,
+    largestClaim: largestClaim.rows[0] ?? null,
+  };
+}
+
 export interface EncounterFilters {
   q?: string;
   outcome?: string;
