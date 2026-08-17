@@ -8,6 +8,7 @@ const sectionPrefixes: Record<string, string[]> = {
   "/": ["/encounters"],
   "/hunters": ["/hunter/"],
   "/guilds": ["/guild/"],
+  "/reports/weekly": ["/reports/"],
 };
 
 function isActive(href: string, pathname: string): boolean {

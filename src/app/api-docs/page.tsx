@@ -12,6 +12,12 @@ interface Endpoint {
 
 const endpoints: Endpoint[] = [
   {
+    path: "/api/reports/weekly",
+    summary: "A complete bounty-cycle report bounded by the source leaderboard's weekly dates.",
+    parameters: [["period", "CURRENT | PREVIOUS_1 | PREVIOUS_2 (legacy shortcut; default CURRENT)"], ["cycle", "ISO timestamp from availableCycles[].starts_at; selects any archived week"]],
+    returns: "{ period, cycle, availableCycles, summary, topHunters, topTargets, leaders, activity, largestClaim } — deaths include a hunter's failed contracts and times killed while targeted",
+  },
+  {
     path: "/api/encounters",
     summary: "The immutable encounter log, newest first.",
     parameters: [

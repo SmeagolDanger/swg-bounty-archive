@@ -26,6 +26,7 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 | `GET /api/raw-data` | Full-text search over the lossless raw-response archive |
 | `GET /api/raw-data/{id}` | One archived source response with its exact original payload |
 | `GET /api/dashboard` | Aggregate snapshot: totals, recent activity, top boards |
+| `GET /api/reports/weekly` | Exact-cycle report with all selectable `availableCycles`; pass a returned `starts_at` as the ISO `cycle` parameter to retrieve any archived week |
 | `GET /api/health` | Liveness of web, database, and collector (503 while degraded) |
 
 Parameter tables, defaults, and worked examples for each endpoint are documented at `/api-docs` on the running site.
@@ -53,3 +54,5 @@ curl -s "https://jawatracks.com/api/encounters?outcome=KILL&minCredits=50000" | 
 ```
 
 `cycle_deaths` and `overall_deaths` count both failed contracts by the hunter and successful claims against that player while they were the target. `cycle_failures` and `overall_failures` remain hunter-role failures only; `cycle_encounters` and `overall_encounters` remain hunter-role contract attempts, which are the denominators for claim rate.
+
+Weekly reports use the exact `starts_at` (inclusive) and `ends_at` (exclusive) boundaries archived from the selected source leaderboard period. They are not rolling seven-day summaries.
