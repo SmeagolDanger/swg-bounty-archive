@@ -82,7 +82,7 @@ a.badge:hover { border-color: var(--signal); color: var(--signal); }
 .status.kill { color: var(--success); border-color: #83d6aa55; }
 .status.failed,.status.error { color: var(--danger); border-color: #ec7d7555; }
 .encounter-list { display: grid; }
-.encounter-list-head,.encounter-summary--archive { display: grid; grid-template-columns: 160px minmax(130px,1fr) 100px minmax(130px,1fr) 120px 20px; gap: 12px; align-items: center; }
+.encounter-list-head,.encounter-summary--archive { display: grid; grid-template-columns: 208px minmax(120px,1fr) 92px minmax(120px,1fr) 112px 20px; gap: 12px; align-items: center; }
 .encounter-list-head { min-height: 38px; padding: 0 10px; color: var(--dim); font: 9px var(--font-mono); text-transform: uppercase; letter-spacing: .1em; border-bottom: 1px solid var(--line-bright); }
 .encounter-list-head span:nth-last-child(2) { text-align: right; }
 .encounter-row { border-bottom: 1px solid var(--line); font-size: 13px; }
