@@ -17,7 +17,9 @@ export type ObservabilityEvent =
   | "database_transaction_failed"
   | "pagination_incomplete"
   | "worker_started"
-  | "worker_stopped";
+  | "worker_stopped"
+  | "discord_report_posted"
+  | "discord_report_failed";
 
 export type LogContext = Record<string, unknown>;
 
