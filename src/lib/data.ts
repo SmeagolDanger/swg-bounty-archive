@@ -220,12 +220,25 @@ export async function getWeeklyReport(period: WeeklyReportPeriod = "CURRENT", cy
       FROM latest l JOIN leaderboard_entries e ON e.snapshot_id=l.id
       JOIN participants p ON p.id=e.participant_id
       WHERE e.rank=1 ORDER BY l.leaderboard_id`, bounds),
-    pool.query(`SELECT event_at::date::text AS day,count(*)::int AS encounters,
-        count(*) FILTER(WHERE outcome='KILL')::int AS claims,
-        count(*) FILTER(WHERE outcome='FAILED')::int AS failures,
-        coalesce(sum(credits) FILTER(WHERE outcome='KILL'),0)::float8 AS credits
-      FROM bounty_encounters WHERE event_at >= $1 AND event_at < $2
-      GROUP BY 1 ORDER BY 1`, bounds),
+    pool.query(`WITH days AS (
+        SELECT generate_series($1::timestamptz::date, LEAST($2::timestamptz - interval '1 second', now())::date, '1 day')::date AS day
+      ), rows AS (
+        SELECT event_at::date AS day,count(*)::int AS encounters,
+          count(*) FILTER(WHERE outcome='KILL')::int AS claims,
+          count(*) FILTER(WHERE outcome='FAILED')::int AS failures,
+          coalesce(sum(credits) FILTER(WHERE outcome='KILL'),0)::float8 AS credits
+        FROM bounty_encounters WHERE event_at >= $1 AND event_at < $2
+        GROUP BY 1
+      )
+      -- Every elapsed day of the cycle appears, zero-filled when quiet;
+      -- future days of the current cycle are omitted.
+      SELECT days.day::text AS day,
+        coalesce(rows.encounters,0)::int AS encounters,
+        coalesce(rows.claims,0)::int AS claims,
+        coalesce(rows.failures,0)::int AS failures,
+        coalesce(rows.credits,0)::float8 AS credits
+      FROM days LEFT JOIN rows ON rows.day = days.day
+      ORDER BY days.day`, bounds),
     pool.query(`SELECT be.id,be.event_at,be.hunter_name,be.target_name,be.credits,
         hunter.id AS hunter_participant_id,target.id AS target_participant_id
       FROM bounty_encounters be

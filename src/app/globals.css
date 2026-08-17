@@ -347,3 +347,44 @@ h1,.section-head h2,.page-head h1 { color: var(--ink); font-family: var(--font-d
   .metrics,.profile-metrics { grid-template-columns: 1fr; }
   .brand b { font-size: 12px; }
 }
+
+/* ── Weekly report share composition (off-screen PNG export) ───────── */
+.report-share { width: 1200px; padding: 44px 48px 32px; background: linear-gradient(160deg, #0b111c 0%, var(--void) 55%); color: var(--ink); font-family: var(--font-body); border-top: 3px solid var(--signal); }
+.report-share .rs-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 26px; }
+.report-share .rs-eyebrow { display: block; color: var(--signal); font: 11px var(--font-mono); letter-spacing: .22em; margin-bottom: 10px; }
+.report-share h1 { margin: 0; font: 700 44px var(--font-display); letter-spacing: .04em; text-transform: uppercase; }
+.report-share .rs-verified { text-align: right; }
+.report-share .rs-verified span { display: block; color: var(--dim); font: 9px var(--font-mono); letter-spacing: .14em; margin-bottom: 5px; }
+.report-share .rs-verified b { font: 13px var(--font-mono); color: var(--muted); }
+.report-share .rs-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.report-share .rs-metric { border: 1px solid var(--line); border-left: 2px solid var(--signal); background: var(--panel); padding: 14px 16px; }
+.report-share .rs-metric span { display: block; color: var(--dim); font: 9px var(--font-mono); letter-spacing: .14em; margin-bottom: 8px; }
+.report-share .rs-metric b { display: block; font: 700 30px var(--font-display); letter-spacing: .02em; }
+.report-share .rs-metric small { display: block; color: var(--muted); font-size: 11px; margin-top: 5px; }
+.report-share .rs-callout { display: flex; align-items: baseline; gap: 16px; border: 1px solid #e5b25b44; border-left: 2px solid var(--amber); background: #e5b25b0b; padding: 12px 16px; margin-bottom: 22px; }
+.report-share .rs-callout span { color: var(--dim); font: 9px var(--font-mono); letter-spacing: .14em; }
+.report-share .rs-callout b { font-size: 15px; }
+.report-share .rs-callout strong { margin-left: auto; color: var(--amber); font: 700 20px var(--font-mono); }
+.report-share .rs-columns { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; margin-bottom: 22px; }
+.report-share .rs-columns section { border: 1px solid var(--line); background: var(--panel); padding: 14px 16px; }
+.report-share .rs-columns h2 { margin: 0 0 10px; font: 700 15px var(--font-display); text-transform: uppercase; letter-spacing: .08em; }
+.report-share .rs-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.report-share .rs-rank { color: var(--dim); font: 10px var(--font-mono); }
+.report-share .rs-name { flex: 1; min-width: 0; }
+.report-share .rs-name b { display: block; font-size: 13px; }
+.report-share .rs-name small,.report-share .rs-record small { display: block; color: var(--muted); font-size: 10px; }
+.report-share .rs-record { text-align: right; }
+.report-share .rs-record b { font: 600 13px var(--font-mono); }
+.report-share .rs-credits { min-width: 110px; text-align: right; color: var(--amber); font: 12px var(--font-mono); }
+.report-share .rs-leaders { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 22px; }
+.report-share .rs-leader { border: 1px solid var(--line); border-top: 2px solid var(--signal); background: var(--panel); padding: 10px 12px; }
+.report-share .rs-leader span { display: block; color: var(--dim); font: 8px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
+.report-share .rs-leader b { display: block; font-size: 12px; }
+.report-share .rs-leader small { display: block; color: var(--muted); font-size: 9px; margin-bottom: 6px; }
+.report-share .rs-leader strong { display: block; color: var(--amber); font: 600 12px var(--font-mono); }
+.report-share .rs-activity { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+.report-share .rs-activity th { text-align: left; color: var(--dim); font: 9px var(--font-mono); letter-spacing: .12em; padding: 6px 10px; border-bottom: 1px solid var(--line-bright); }
+.report-share .rs-activity td { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.report-share .rs-num { text-align: right; }
+.report-share .rs-activity td.rs-num { font: 12px var(--font-mono); }
+.report-share .rs-foot { display: flex; justify-content: space-between; color: var(--dim); font: 10px var(--font-mono); letter-spacing: .14em; padding-top: 14px; border-top: 1px solid var(--line); }
