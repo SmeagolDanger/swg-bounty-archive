@@ -239,8 +239,10 @@ h1,.section-head h2,.page-head h1 { color: var(--ink); font-family: var(--font-d
 .report-callout b { display: block; margin-top: 6px; font-size: 15px; }.report-callout b i { color: var(--amber); font-style: normal; }
 .report-callout strong { color: var(--amber); font: 700 20px var(--font-mono); white-space: nowrap; }
 .report-metrics .metric dd.credits { font-size: clamp(19px,2.1vw,28px); white-space: nowrap; }
-.report-record { display: grid; grid-template-columns: 30px minmax(0,1fr) auto auto; align-items: center; gap: 12px; min-height: 58px; border-top: 1px solid var(--line); font-size: 12px; }
-.report-record > span { min-width: 0; }.report-record small { display: block; margin-top: 3px; color: var(--dim); font: 9px var(--font-mono); }.report-record--target { grid-template-columns: 30px minmax(0,1fr) auto; }
+.report-record { display: grid; grid-template-columns: 30px minmax(0,1fr) 112px 118px; align-items: center; gap: 12px; min-height: 58px; border-top: 1px solid var(--line); font-size: 12px; }
+.report-record > span:nth-child(3) { text-align: right; }
+.report-record > .credits { text-align: right; font-variant-numeric: tabular-nums; }
+.report-record > span { min-width: 0; }.report-record small { display: block; margin-top: 3px; color: var(--dim); font: 9px var(--font-mono); }.report-record--target { grid-template-columns: 30px minmax(0,1fr) 112px; }
 .report-board-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
 .report-board { position: relative; min-height: 154px; padding-top: 30px; }
 .report-board:before { content: ""; position: absolute; top: 0; left: 20px; width: 42px; height: 3px; background: var(--signal); }
@@ -373,7 +375,7 @@ h1,.section-head h2,.page-head h1 { color: var(--ink); font-family: var(--font-d
 .report-share .rs-name { flex: 1; min-width: 0; }
 .report-share .rs-name b { display: block; font-size: 13px; }
 .report-share .rs-name small,.report-share .rs-record small { display: block; color: var(--muted); font-size: 10px; }
-.report-share .rs-record { text-align: right; }
+.report-share .rs-record { min-width: 96px; text-align: right; }
 .report-share .rs-record b { font: 600 13px var(--font-mono); }
 .report-share .rs-credits { min-width: 110px; text-align: right; color: var(--amber); font: 12px var(--font-mono); }
 .report-share .rs-leaders { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 22px; }
