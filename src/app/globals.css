@@ -352,7 +352,7 @@ h1,.section-head h2,.page-head h1 { color: var(--ink); font-family: var(--font-d
 .report-share { width: 1200px; padding: 44px 48px 32px; background: linear-gradient(160deg, #0b111c 0%, var(--void) 55%); color: var(--ink); font-family: var(--font-body); border-top: 3px solid var(--signal); }
 .report-share .rs-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 26px; }
 .report-share .rs-eyebrow { display: block; color: var(--signal); font: 11px var(--font-mono); letter-spacing: .22em; margin-bottom: 10px; }
-.report-share h1 { margin: 0; font: 700 44px var(--font-display); letter-spacing: .04em; text-transform: uppercase; }
+.report-share h1 { margin: 0; font: 700 34px var(--font-display); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .report-share .rs-verified { text-align: right; }
 .report-share .rs-verified span { display: block; color: var(--dim); font: 9px var(--font-mono); letter-spacing: .14em; margin-bottom: 5px; }
 .report-share .rs-verified b { font: 13px var(--font-mono); color: var(--muted); }
