@@ -390,3 +390,18 @@ h1,.section-head h2,.page-head h1 { color: var(--ink); font-family: var(--font-d
 .report-share .rs-num { text-align: right; }
 .report-share .rs-activity td.rs-num { font: 12px var(--font-mono); }
 .report-share .rs-foot { display: flex; justify-content: space-between; color: var(--dim); font: 10px var(--font-mono); letter-spacing: .14em; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* ── Account page ──────────────────────────────────────────────────── */
+.account-grid { display: grid; gap: 20px; max-width: 720px; }
+.account-user { display: flex; align-items: center; gap: 14px; }
+.account-user img { border: 1px solid var(--line-bright); }
+.account-user b { flex: 1; font-size: 15px; }
+.account-hint { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0 0 14px; }
+.account-signin { display: inline-block; margin-bottom: 14px; }
+.account-token-create { display: flex; gap: 10px; margin-bottom: 14px; }
+.account-token-create .field { flex: 1; }
+.account-token-list { display: grid; gap: 8px; }
+.account-token { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); background: var(--panel-2); padding: 10px 12px; }
+.account-token small { display: block; color: var(--dim); font: 9px var(--font-mono); margin-top: 3px; }
+.account-fresh-token { display: grid; gap: 8px; }
+.account-fresh-token code { font: 12px var(--font-mono); color: var(--amber); overflow-wrap: anywhere; user-select: all; }

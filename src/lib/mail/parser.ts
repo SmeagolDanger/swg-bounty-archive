@@ -1,0 +1,129 @@
+import { createHash } from "node:crypto";
+
+// Parser for SWG /mailsave files. The format is stable across emulators:
+//
+//   <mail id>
+//   FROM: SWG.<Galaxy>.auctioner        (or a player/system name)
+//   SUBJECT: Vendor Sale Complete
+//   TIMESTAMP: 1755468000               (unix seconds)
+//   <blank line>
+//   <body...>
+//
+// Sale bodies (vendor and bazaar) follow the classic auction templates:
+//   Vendor: "Vendor: <vendor> has sold <item> to <buyer> for <n> credits."
+//   Bazaar: "Your auction of <item> has been sold to <buyer> for <n> credits"
+// Every uploaded mail is archived raw, so this parser can be revised and
+// re-run over history at any time — parse failures never lose data.
+
+export const MAIL_PARSER_VERSION = "1.0.0";
+
+export interface ParsedMail {
+  fingerprint: string;
+  mailId: string;
+  sender: string;
+  subject: string;
+  sentAt: Date | null;
+  body: string;
+}
+
+export interface ParsedSale {
+  itemName: string;
+  buyer: string;
+  credits: number;
+  vendor: string;
+  saleType: "vendor" | "bazaar";
+}
+
+export function mailFingerprint(raw: string): string {
+  return createHash("sha256").update(raw.replace(/\r\n/g, "\n")).digest("hex");
+}
+
+export function parseMail(raw: string): ParsedMail {
+  const text = raw.replace(/\r\n/g, "\n");
+  const lines = text.split("\n");
+  let mailId = "";
+  let sender = "";
+  let subject = "";
+  let sentAt: Date | null = null;
+  let bodyStart = 0;
+
+  for (let index = 0; index < Math.min(lines.length, 8); index += 1) {
+    const line = lines[index];
+    if (index === 0 && /^\d+$/.test(line.trim())) {
+      mailId = line.trim();
+      continue;
+    }
+    const header = /^([A-Z]+):\s?(.*)$/.exec(line);
+    if (header) {
+      const [, key, value] = header;
+      if (key === "FROM") sender = value.trim();
+      else if (key === "SUBJECT") subject = value.trim();
+      else if (key === "TIMESTAMP") {
+        const seconds = Number(value.trim());
+        if (Number.isFinite(seconds) && seconds > 0) sentAt = new Date(seconds * 1_000);
+      }
+      bodyStart = index + 1;
+      continue;
+    }
+    if (line.trim() === "" && bodyStart > 0) {
+      bodyStart = index + 1;
+      break;
+    }
+  }
+
+  return {
+    fingerprint: mailFingerprint(raw),
+    mailId,
+    sender,
+    subject,
+    sentAt,
+    body: lines.slice(bodyStart).join("\n").trim(),
+  };
+}
+
+const CREDITS = String.raw`(?<credits>[\d,]+)\s+credits?`;
+
+const VENDOR_PATTERNS = [
+  // "Vendor: Hangar Nine has sold [Mark V Reactor] to Wrollo for 250,000 credits."
+  new RegExp(String.raw`Vendor:\s*(?<vendor>.+?)\s+has sold\s+(?<item>.+?)\s+to\s+(?<buyer>.+?)\s+for\s+${CREDITS}`, "i"),
+  // "Your vendor Hangar Nine has sold Mark V Reactor to Wrollo for 250000 credits"
+  new RegExp(String.raw`Your vendor\s+(?<vendor>.+?)\s+has sold\s+(?<item>.+?)\s+to\s+(?<buyer>.+?)\s+for\s+${CREDITS}`, "i"),
+];
+
+const BAZAAR_PATTERNS = [
+  // "Your auction of Mark V Reactor has been sold to Wrollo for 250000 credits"
+  new RegExp(String.raw`Your auction of\s+(?<item>.+?)\s+has been sold to\s+(?<buyer>.+?)\s+for\s+${CREDITS}`, "i"),
+];
+
+export function parseSale(mail: ParsedMail): ParsedSale | null {
+  const haystack = `${mail.subject}\n${mail.body}`;
+  for (const pattern of VENDOR_PATTERNS) {
+    const match = pattern.exec(haystack);
+    if (match?.groups) {
+      return {
+        vendor: cleanName(match.groups.vendor),
+        itemName: cleanName(match.groups.item),
+        buyer: cleanName(match.groups.buyer),
+        credits: Number(match.groups.credits.replace(/,/g, "")),
+        saleType: "vendor",
+      };
+    }
+  }
+  for (const pattern of BAZAAR_PATTERNS) {
+    const match = pattern.exec(haystack);
+    if (match?.groups) {
+      return {
+        vendor: "",
+        itemName: cleanName(match.groups.item),
+        buyer: cleanName(match.groups.buyer),
+        credits: Number(match.groups.credits.replace(/,/g, "")),
+        saleType: "bazaar",
+      };
+    }
+  }
+  return null;
+}
+
+function cleanName(value: string): string {
+  return value.trim().replace(/^\[|\]$/g, "").replace(/\s+/g, " ").replace(/\.+$/, "");
+}

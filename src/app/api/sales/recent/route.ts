@@ -1,0 +1,18 @@
+import { z } from "zod";
+import { pool } from "@/lib/db/client";
+import { authedUser, userForApiToken } from "@/lib/auth/session";
+
+export async function GET(request: Request) {
+  const user = (await authedUser(request)) ?? (await userForApiToken(request));
+  if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const url = new URL(request.url);
+  const limit = z.coerce.number().int().min(1).max(200).catch(50).parse(url.searchParams.get("limit") ?? undefined);
+  const character = url.searchParams.get("character")?.trim() || null;
+  const sales = await pool.query(
+    `SELECT id, character_name, item_name, buyer, credits, vendor, sale_type, occurred_at
+     FROM mail_sales WHERE user_id=$1 AND ($2::text IS NULL OR character_name=$2)
+     ORDER BY occurred_at DESC LIMIT $3`,
+    [user.id, character, limit],
+  );
+  return Response.json({ sales: sales.rows });
+}

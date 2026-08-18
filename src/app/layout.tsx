@@ -14,8 +14,8 @@ const mono = JetBrains_Mono({ variable: "--font-mono", subsets: ["latin"], weigh
 
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
-  title: { default: "Outer Rim Ledger", template: "%s · Outer Rim Ledger" },
-  description: "An independent, lossless historical archive of public SWG Legends Bounty Hunter activity.",
+  title: { default: "Jawa Tracks", template: "%s · Jawa Tracks" },
+  description: "Jawa Tracks — the Outer Rim Ledger archive, pilot tools, and sales tracking for SWG Legends.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#070810" };
@@ -30,9 +30,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="scanlines" aria-hidden="true" />
         <header className="site-header">
           <div className="shell nav-shell">
-            <Link href="/" className="brand" aria-label="Outer Rim Ledger home">
+            <Link href="/" className="brand" aria-label="Jawa Tracks home">
               <span className="brand-mark">JT</span>
-              <span><b>Outer Rim Ledger</b><small>Jawa Tracks // public archive</small></span>
+              <span><b>Jawa Tracks</b><small>Outer Rim Ledger // public archive</small></span>
             </Link>
             <nav className="desktop-nav" aria-label="Primary navigation"><NavLinks links={nav} /></nav>
             <div className="desktop-search"><GlobalSearch /></div>
