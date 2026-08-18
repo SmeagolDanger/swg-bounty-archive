@@ -6,6 +6,7 @@ import { PUT as syncPut, GET as syncGet } from "@/app/api/sync/route";
 import { POST as tokenPost } from "@/app/api/account/tokens/route";
 import { POST as mailPost } from "@/app/api/mail/upload/route";
 import { GET as salesGet } from "@/app/api/sales/summary/route";
+import { GET as recentGet } from "@/app/api/sales/recent/route";
 
 const dbEnabled = process.env.RUN_DB_TESTS === "1";
 const suite = dbEnabled ? describe : describe.skip;
@@ -84,5 +85,13 @@ suite("accounts, sync, and mail pipeline", () => {
     expect(body.summary.total_sales).toBe(2);
     expect(body.summary.total_credits).toBe(500_000);
     expect(body.characters).toEqual(["ChickenRat"]);
+
+    // Every numeric field must serialize as a JSON number — pg returns
+    // uncast bigints as strings, which the app rejects as invalid.
+    const recent = await recentGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/recent"));
+    const rows = (await recent.json()).sales;
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(typeof row.credits).toBe("number");
+    for (const value of Object.values(body.summary)) expect(typeof value).toBe("number");
   });
 });

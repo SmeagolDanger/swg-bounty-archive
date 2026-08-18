@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const limit = z.coerce.number().int().min(1).max(200).catch(50).parse(url.searchParams.get("limit") ?? undefined);
   const character = url.searchParams.get("character")?.trim() || null;
   const sales = await pool.query(
-    `SELECT id, character_name, item_name, buyer, credits, vendor, sale_type, occurred_at
+    `SELECT id, character_name, item_name, buyer, credits::float8 AS credits, vendor, sale_type, occurred_at
      FROM mail_sales WHERE user_id=$1 AND ($2::text IS NULL OR character_name=$2)
      ORDER BY occurred_at DESC LIMIT $3`,
     [user.id, character, limit],
