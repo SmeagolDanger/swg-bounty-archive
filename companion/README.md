@@ -11,17 +11,20 @@ several PCs or re-uploading old folders never double-counts a sale.
    **mail companion token** — it is shown exactly once.
 2. Download `JawaTracksCompanion.exe` (GitHub → Actions → latest
    "Build mail companion" run → artifact) onto your gaming PC.
-3. Run it once — it writes `%APPDATA%\JawaTracks\config.json` and exits.
-4. Paste your token into the config's `"token"` field and start it again.
-   It sits in the tray and uploads new mail automatically.
-5. In game, run `/mailsave` now and then (SWG writes your mail to
+3. Run it — on first start it opens **Settings** in your browser
+   (also in the tray menu: right-click → *Open Settings*). Paste the token,
+   hit **Test Connection**, then **Save**. Everything applies live; there is
+   no config file to edit and no restart needed.
+4. In game, run `/mailsave` now and then (SWG writes your mail to
    `profiles\<account>\<galaxy>\mail_<character>\`). The companion finds the
-   usual install paths; add yours to `"mailDirs"` if it's somewhere unusual.
+   usual install paths automatically — the Settings page shows exactly which
+   mail folders and chat logs it discovered, and extra folders can be added
+   there if yours live somewhere unusual.
 
 ## Importing your SWGAide history
 
 SWGAide archives mails into its own folder (usually `SWGAide\mails\<Character>\`).
-Add that folder to `"mailDirs"` and the companion imports the entire history
+Add that folder under *Mail folders* in Settings and the companion imports the entire history
 on first run — timestamps come from each mail, so historical sales land on
 their real dates. Everything is deduplicated by content, so overlapping
 game and SWGAide folders never double-count.
@@ -34,7 +37,13 @@ minute of upload.
 - The token can be revoked at any time from the account page.
 - Every mail is archived verbatim server-side; sale parsing is versioned and
   re-runnable, so nothing is lost if a mail format ever changes.
-- Development: `go test ./...`; non-Windows builds run as a console app.
+- Settings are served on `127.0.0.1` only (tray → Open Settings), guarded
+  against cross-site writes; the token never leaves this PC except toward
+  your configured server.
+- `%APPDATA%\JawaTracks\config.json` still backs the settings if you ever
+  want to script them.
+- Development: `go test ./...`; non-Windows builds run as a console app with
+  the same settings page.
 
 ## Live DPS stream
 
@@ -46,9 +55,10 @@ backend, powering the app's Combat Monitor screen in near real time.
   profile folder. The line format matches BeefySan/SWGLogAnalyzer, so the
   same logs work in both tools.
 - Discovery is automatic under your install/profiles folders; add explicit
-  files or folders to `chatLogDirs` in config.json if yours live elsewhere.
-- `chatPollSeconds` (default 2) controls the tail rate; set `disableDps`
-  to `true` to turn the stream off entirely.
+  files or folders under *Chat log folders* in Settings if yours live
+  elsewhere.
+- The *Combat poll* rate (default 2s) and the stream on/off toggle are in
+  Settings and apply immediately.
 - Only combat-shaped lines are uploaded (never chat), each fingerprinted so
   restarts and retries can't double-count. The server keeps combat events
   for 14 days — it's a live meter, not an archive.

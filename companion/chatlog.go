@@ -178,14 +178,18 @@ func (s ChatState) save() {
 	}
 }
 
-func chatLoop(config Config, sink statusSink) {
+func chatLoop(sink statusSink) {
 	state := loadChatState()
-	interval := time.Duration(config.ChatPollSeconds) * time.Second
 	var files []string
 	rescan := 0
 	streamed := 0
 
 	for {
+		config := conf()
+		if !tokenConfigured(config) || config.DisableDps {
+			time.Sleep(3 * time.Second)
+			continue
+		}
 		if rescan == 0 {
 			files = discoverChatLogs(config.ChatLogDirs, config.MailDirs)
 		}
@@ -244,7 +248,7 @@ func chatLoop(config Config, sink statusSink) {
 				sink.status(fmt.Sprintf("DPS: %d combat events streamed", streamed))
 			}
 		}
-		time.Sleep(interval)
+		time.Sleep(time.Duration(config.ChatPollSeconds) * time.Second)
 	}
 }
 

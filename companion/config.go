@@ -5,7 +5,47 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 )
+
+// The active config is shared between the mail loop, the chat loop, and the
+// settings UI; saves from the UI apply live without a restart.
+var (
+	configMu     sync.RWMutex
+	activeConfig Config
+)
+
+func conf() Config {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return activeConfig
+}
+
+func setConf(config Config) {
+	configMu.Lock()
+	activeConfig = config
+	configMu.Unlock()
+}
+
+func saveConfig(config Config) error {
+	if err := os.MkdirAll(configDir(), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(configPath(), data, 0o600); err != nil {
+		return err
+	}
+	setConf(config)
+	return nil
+}
+
+func tokenConfigured(config Config) bool {
+	return config.Token != "" && !strings.HasPrefix(config.Token, "PASTE-")
+}
 
 // Config lives next to the state file in the per-user app data directory:
 // %APPDATA%\JawaTracks on Windows, ~/.config/jawatracks elsewhere.
@@ -60,7 +100,7 @@ func writeConfigTemplate() error {
 		return err
 	}
 	template := Config{
-		Token:       "PASTE-YOUR-TOKEN-FROM-jawatracks.com/account",
+		Token:       "",
 		Server:      "https://jawatracks.com",
 		MailDirs:    []string{},
 		PollSeconds: 60,

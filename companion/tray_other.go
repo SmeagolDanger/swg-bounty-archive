@@ -2,7 +2,8 @@
 
 package main
 
-// Non-Windows builds (development, testing) run as a plain console loop.
+// Non-Windows builds (development, testing) run as a plain console loop;
+// the settings page works the same as on Windows.
 func platformRun(config Config) {
-	runLoop(config, statusLogger{})
+	runLoop(config, hub)
 }

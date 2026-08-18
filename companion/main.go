@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,28 +18,23 @@ var version = "dev"
 
 func main() {
 	log.SetFlags(log.LstdFlags)
-	log.Printf("Jawa Tracks mail companion %s", version)
+	log.Printf("Jawa Tracks companion %s", version)
 
 	config, err := loadConfig()
 	if errors.Is(err, os.ErrNotExist) {
 		if err := writeConfigTemplate(); err != nil {
 			log.Fatalf("could not write config template: %v", err)
 		}
-		log.Printf("First run: wrote %s", configPath())
-		log.Printf("1) Sign in at https://jawatracks.com/account and create a companion token")
-		log.Printf("2) Paste it into the config file's \"token\" field")
-		log.Printf("3) Start this program again")
-		pause()
-		return
-	}
-	if err != nil {
+		config, _ = loadConfig()
+	} else if err != nil {
 		log.Fatalf("could not read %s: %v", configPath(), err)
 	}
-	if config.Token == "" || strings.HasPrefix(config.Token, "PASTE-") {
-		log.Printf("No token configured yet — edit %s", configPath())
-		log.Printf("Create a token at %s/account", config.Server)
-		pause()
-		return
+	setConf(config)
+
+	startSettingsServer()
+	if !tokenConfigured(config) {
+		hub.status("Not set up yet — open Settings and paste a companion token")
+		openBrowser(settingsURL())
 	}
 
 	platformRun(config)
@@ -53,22 +48,63 @@ type statusLogger struct{}
 
 func (statusLogger) status(text string) { log.Print(text) }
 
-func runLoop(config Config, sink statusSink) {
-	state := loadState()
-	interval := time.Duration(config.PollSeconds) * time.Second
+// The hub keeps recent status lines for the settings page and forwards the
+// newest one to the tray (or console log).
+type statusEntry struct {
+	At   time.Time `json:"at"`
+	Text string    `json:"text"`
+}
 
-	if !config.DisableDps {
-		go chatLoop(config, sink)
+type statusHub struct {
+	mu      sync.Mutex
+	entries []statusEntry
+	forward func(string)
+}
+
+func (h *statusHub) status(text string) {
+	h.mu.Lock()
+	h.entries = append(h.entries, statusEntry{At: time.Now(), Text: text})
+	if len(h.entries) > 50 {
+		h.entries = h.entries[len(h.entries)-50:]
 	}
+	forward := h.forward
+	h.mu.Unlock()
+	log.Print(text)
+	if forward != nil {
+		forward(text)
+	}
+}
+
+func (h *statusHub) recent() []statusEntry {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	entries := make([]statusEntry, len(h.entries))
+	copy(entries, h.entries)
+	for left, right := 0, len(entries)-1; left < right; left, right = left+1, right-1 {
+		entries[left], entries[right] = entries[right], entries[left]
+	}
+	return entries
+}
+
+var hub = &statusHub{}
+
+func runLoop(_ Config, sink statusSink) {
+	state := loadState()
+	go chatLoop(sink)
 
 	for {
+		config := conf()
+		if !tokenConfigured(config) {
+			time.Sleep(3 * time.Second)
+			continue
+		}
 		dirs := discoverMailDirs(config.MailDirs)
 		if len(dirs) == 0 {
-			sink.status("No SWG mail folders found yet — use /mailsave in game, or add your install path to mailDirs in config.json")
+			sink.status("No SWG mail folders found yet — use /mailsave in game, or add your install path in Settings")
 		} else {
 			uploadCycle(config, &state, dirs, sink)
 		}
-		time.Sleep(interval)
+		time.Sleep(time.Duration(config.PollSeconds) * time.Second)
 	}
 }
 
@@ -95,7 +131,3 @@ func uploadCycle(config Config, state *State, dirs []string, sink statusSink) {
 	}
 }
 
-func pause() {
-	fmt.Println("Press Enter to close.")
-	_, _ = fmt.Scanln()
-}

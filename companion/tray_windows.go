@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os/exec"
 
 	"github.com/getlantern/systray"
 )
@@ -18,6 +17,7 @@ func platformRun(config Config) {
 		systray.SetTooltip("Jawa Tracks mail companion")
 		status := systray.AddMenuItem("Starting…", "Last activity")
 		status.Disable()
+		settings := systray.AddMenuItem("Open Settings", "Configure token, folders, and the DPS stream")
 		account := systray.AddMenuItem("Open jawatracks.com/account", "Manage tokens")
 		systray.AddSeparator()
 		quit := systray.AddMenuItem("Quit", "Stop uploading")
@@ -25,15 +25,18 @@ func platformRun(config Config) {
 		go func() {
 			for {
 				select {
+				case <-settings.ClickedCh:
+					openBrowser(settingsURL())
 				case <-account.ClickedCh:
-					_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", config.Server+"/account").Start()
+					openBrowser(conf().Server + "/account")
 				case <-quit.ClickedCh:
 					systray.Quit()
 					return
 				}
 			}
 		}()
-		go runLoop(config, trayStatus{item: status})
+		hub.forward = trayStatus{item: status}.status
+		go runLoop(config, hub)
 	}, func() {})
 }
 
