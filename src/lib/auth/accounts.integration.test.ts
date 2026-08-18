@@ -11,6 +11,7 @@ import { GET as customersGet } from "@/app/api/sales/customers/route";
 import { GET as purchasesGet } from "@/app/api/sales/purchases/route";
 import { POST as combatPost } from "@/app/api/combat/upload/route";
 import { GET as combatLiveGet } from "@/app/api/combat/live/route";
+import { GET as combatSessionsGet } from "@/app/api/combat/sessions/route";
 
 const dbEnabled = process.env.RUN_DB_TESTS === "1";
 const suite = dbEnabled ? describe : describe.skip;
@@ -144,6 +145,13 @@ suite("accounts, sync, and mail pipeline", () => {
       }),
     }));
     expect(await again.json()).toMatchObject({ stored: 0, duplicates: 1 });
+
+    const history = await combatSessionsGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/combat/sessions?days=1"));
+    const sessions = (await history.json()).sessions;
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].encounters[0].title).toBe("A canyon krayt dragon");
+    expect(sessions[0].encounters[0].actors[0]).toMatchObject({ name: "Beefy", damage: 8342, crits: 1 });
+    expect(sessions[0].topPlayer).toBe("Beefy");
   });
 
   it("derives purchases from buyer-side mails", async () => {
