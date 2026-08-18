@@ -69,7 +69,7 @@ func discoverChatLogs(configured []string, mailRoots []string) []string {
 		if err != nil || info.IsDir() {
 			return
 		}
-		if sniff && !looksLikeCombatLog(path) {
+		if sniff && !nameSuggestsChatLog(path) && !looksLikeCombatLog(path) {
 			return
 		}
 		seen[path] = true
@@ -114,6 +114,13 @@ func discoverChatLogs(configured []string, mailRoots []string) []string {
 		}
 	}
 	return files
+}
+
+// SWG servers name per-character logs like "770814532499_chatlog.txt";
+// anything with "chatlog" in the name is taken on sight.
+func nameSuggestsChatLog(path string) bool {
+	name := strings.ToLower(filepath.Base(path))
+	return strings.Contains(name, "chatlog") || strings.Contains(name, "chat_log")
 }
 
 // Reads the last few KB and looks for combat-stamped lines, so discovery

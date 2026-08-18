@@ -170,3 +170,19 @@ func TestDiscoverChatLogsByContent(t *testing.T) {
 		t.Fatalf("expected explicit file to be accepted, got %v", found)
 	}
 }
+
+func TestDiscoverOmegaCharacterChatLogs(t *testing.T) {
+	// Real naming from production: <characterid>_chatlog.txt, and the tail
+	// may be pure conversation with no combat lines in it.
+	galaxy := filepath.Join(t.TempDir(), "profiles", "stormymichael", "Omega")
+	if err := os.MkdirAll(galaxy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(galaxy, "770814532499_chatlog.txt"), []byte("21:02:11 Beefy tells you hello there\r\n"), 0o600)
+	os.WriteFile(filepath.Join(galaxy, "770814532499_expertise_builds.txt"), []byte("build notes\n"), 0o600)
+
+	found := discoverChatLogs([]string{galaxy}, nil)
+	if len(found) != 1 || filepath.Base(found[0]) != "770814532499_chatlog.txt" {
+		t.Fatalf("expected the character chatlog by name, got %v", found)
+	}
+}
