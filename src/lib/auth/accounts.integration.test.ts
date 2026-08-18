@@ -96,6 +96,11 @@ suite("accounts, sync, and mail pipeline", () => {
     for (const row of rows) expect(typeof row.credits).toBe("number");
     for (const value of Object.values(body.summary)) expect(typeof value).toBe("number");
 
+    const byBuyer = await recentGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/recent?buyer=Wrollo"));
+    expect((await byBuyer.json()).sales).toHaveLength(2);
+    const noMatch = await recentGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/recent?buyer=Nobody"));
+    expect((await noMatch.json()).sales).toHaveLength(0);
+
     const customers = await customersGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/customers"));
     const ledger = (await customers.json()).customers;
     expect(ledger).toHaveLength(1);
