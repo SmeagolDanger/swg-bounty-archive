@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { pool } from "@/lib/db/client";
 import { userForApiToken, authedUser } from "@/lib/auth/session";
-import { MAIL_PARSER_VERSION, parseMail, parseSale } from "@/lib/mail/parser";
+import { MAIL_PARSER_VERSION, parseMail, parsePurchase, parseSale } from "@/lib/mail/parser";
 import { rateLimited } from "@/lib/rate-limit";
 
 // Mail companion upload: a batch of raw /mailsave files. Every mail is
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   let archived = 0;
   let duplicates = 0;
   let sales = 0;
+  let purchases = 0;
   for (const raw of parsed.data.mails) {
     const mail = parseMail(raw);
     const inserted = await pool.query(
@@ -48,6 +49,16 @@ export async function POST(request: Request) {
       );
       sales += 1;
     }
+    const purchase = parsePurchase(mail);
+    if (purchase) {
+      await pool.query(
+        `INSERT INTO mail_purchases(user_id, mail_id, character_name, item_name, seller, credits, purchase_type, occurred_at)
+         VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT(mail_id) DO NOTHING`,
+        [user.id, mailRowId, parsed.data.characterName, purchase.itemName, purchase.seller, purchase.credits, purchase.purchaseType, mail.sentAt ?? new Date()],
+      );
+      purchases += 1;
+    }
   }
-  return Response.json({ archived, duplicates, sales });
+  return Response.json({ archived, duplicates, sales, purchases });
 }

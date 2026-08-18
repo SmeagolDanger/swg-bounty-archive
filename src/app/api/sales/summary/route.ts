@@ -41,12 +41,29 @@ export async function GET(request: Request) {
      GROUP BY days.day ORDER BY days.day`,
     [user.id, character],
   );
+  const purchases = await pool.query(
+    `SELECT
+       count(*) FILTER (WHERE occurred_at >= now() - interval '30 days')::int AS month_purchases,
+       coalesce(sum(credits) FILTER (WHERE occurred_at >= now() - interval '30 days'), 0)::float8 AS month_spent,
+       count(*)::int AS total_purchases,
+       coalesce(sum(credits), 0)::float8 AS total_spent
+     FROM mail_purchases WHERE user_id=$1 AND ($2::text IS NULL OR character_name=$2)`,
+    [user.id, character],
+  );
+  const topCustomers = await pool.query(
+    `SELECT buyer, count(*)::int AS purchases, sum(credits)::float8 AS credits, max(occurred_at) AS last_purchase
+     FROM mail_sales WHERE user_id=$1 AND ($2::text IS NULL OR character_name=$2) AND buyer <> ''
+     GROUP BY buyer ORDER BY credits DESC LIMIT 10`,
+    [user.id, character],
+  );
   const characters = await pool.query(
     "SELECT DISTINCT character_name FROM mail_sales WHERE user_id=$1 AND character_name <> '' ORDER BY character_name",
     [user.id],
   );
   return Response.json({
     summary: windows.rows[0],
+    purchases: purchases.rows[0],
+    topCustomers: topCustomers.rows,
     topItems: topItems.rows,
     daily: daily.rows,
     characters: characters.rows.map((row) => row.character_name),

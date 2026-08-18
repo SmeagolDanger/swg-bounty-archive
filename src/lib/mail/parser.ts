@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 // Every uploaded mail is archived raw, so this parser can be revised and
 // re-run over history at any time — parse failures never lose data.
 
-export const MAIL_PARSER_VERSION = "1.1.0";
+export const MAIL_PARSER_VERSION = "1.2.0";
 
 export interface ParsedMail {
   fingerprint: string;
@@ -130,6 +130,36 @@ export function parseSale(mail: ParsedMail): ParsedSale | null {
         buyer: cleanName(match.groups.buyer),
         credits: Number(match.groups.credits.replace(/,/g, "")),
         saleType: "bazaar",
+      };
+    }
+  }
+  return null;
+}
+
+export interface ParsedPurchase {
+  itemName: string;
+  seller: string;
+  credits: number;
+  purchaseType: "vendor" | "bazaar";
+}
+
+const PURCHASE_PATTERNS: { pattern: RegExp; type: "vendor" | "bazaar" }[] = [
+  // "You have won the auction of Mark V Reactor from Wrollo for 250000 credits"
+  { pattern: new RegExp(String.raw`You (?:have )?won the auction of\s+(?<item>.+?)\s+from\s+(?<seller>.+?)\s+for\s+${CREDITS}`, "i"), type: "bazaar" },
+  // "You have purchased Mark V Reactor from Wrollo for 250000 credits"
+  { pattern: new RegExp(String.raw`You (?:have )?purchased\s+(?<item>.+?)\s+from\s+(?:the )?(?:[Vv]endor:?\s+)?(?<seller>.+?)\s+for\s+${CREDITS}`, "i"), type: "vendor" },
+];
+
+export function parsePurchase(mail: ParsedMail): ParsedPurchase | null {
+  const haystack = `${mail.subject}\n${mail.body}`;
+  for (const { pattern, type } of PURCHASE_PATTERNS) {
+    const match = pattern.exec(haystack);
+    if (match?.groups) {
+      return {
+        itemName: cleanName(match.groups.item),
+        seller: cleanName(match.groups.seller),
+        credits: Number(match.groups.credits.replace(/,/g, "")),
+        purchaseType: type,
       };
     }
   }

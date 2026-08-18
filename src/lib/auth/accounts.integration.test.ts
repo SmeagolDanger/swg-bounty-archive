@@ -7,6 +7,8 @@ import { POST as tokenPost } from "@/app/api/account/tokens/route";
 import { POST as mailPost } from "@/app/api/mail/upload/route";
 import { GET as salesGet } from "@/app/api/sales/summary/route";
 import { GET as recentGet } from "@/app/api/sales/recent/route";
+import { GET as customersGet } from "@/app/api/sales/customers/route";
+import { GET as purchasesGet } from "@/app/api/sales/purchases/route";
 
 const dbEnabled = process.env.RUN_DB_TESTS === "1";
 const suite = dbEnabled ? describe : describe.skip;
@@ -93,5 +95,33 @@ suite("accounts, sync, and mail pipeline", () => {
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(typeof row.credits).toBe("number");
     for (const value of Object.values(body.summary)) expect(typeof value).toBe("number");
+
+    const customers = await customersGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/customers"));
+    const ledger = (await customers.json()).customers;
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ buyer: "Wrollo", purchases: 2 });
+    expect(typeof ledger[0].credits).toBe("number");
+  });
+
+  it("derives purchases from buyer-side mails", async () => {
+    const purchaseMail = `190001
+SWG.Omega.auctioner
+Auction Won
+TIMESTAMP: 1755480000
+
+You have won the auction of Mark IV Engine from Torye Klyn for 98,500 credits`;
+    const created = await tokenPost(bearer(sessionToken, { method: "POST", body: JSON.stringify({ name: "Test PC 2" }) }));
+    const apiToken = (await created.json()).token as string;
+    const upload = await mailPost(bearer(apiToken, {
+      method: "POST",
+      body: JSON.stringify({ characterName: "ChickenRat", mails: [purchaseMail] }),
+    }));
+    expect(await upload.json()).toMatchObject({ archived: 1, sales: 0, purchases: 1 });
+
+    const purchases = await purchasesGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/purchases"));
+    const rows = (await purchases.json()).purchases;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].item_name).toBe("Mark IV Engine");
+    expect(typeof rows[0].credits).toBe("number");
   });
 });

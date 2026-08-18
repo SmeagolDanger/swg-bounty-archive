@@ -80,3 +80,35 @@ describe("positional mailsave format (live SWG output)", () => {
     expect(parseSale(mail)?.credits).toBe(12_000);
   });
 });
+
+import { parsePurchase } from "./parser";
+
+const wonAuctionMail = `184471
+SWG.Omega.auctioner
+Auction Won
+TIMESTAMP: 1755472000
+
+You have won the auction of Mark IV Engine from Torye Klyn for 98,500 credits`;
+
+const purchasedMail = `184472
+SWG.Omega.auctioner
+Item Purchased
+TIMESTAMP: 1755473000
+
+You have purchased [Chaff Launcher] from Vendor: Hangar Nine for 15000 credits.`;
+
+describe("purchase parsing", () => {
+  it("extracts a won auction", () => {
+    expect(parsePurchase(parseMail(wonAuctionMail))).toEqual({
+      itemName: "Mark IV Engine", seller: "Torye Klyn", credits: 98_500, purchaseType: "bazaar",
+    });
+  });
+  it("extracts a vendor purchase", () => {
+    expect(parsePurchase(parseMail(purchasedMail))).toEqual({
+      itemName: "Chaff Launcher", seller: "Hangar Nine", credits: 15_000, purchaseType: "vendor",
+    });
+  });
+  it("does not misread a sale as a purchase", () => {
+    expect(parsePurchase(parseMail(vendorMail))).toBeNull();
+  });
+});
