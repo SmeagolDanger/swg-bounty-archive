@@ -16,6 +16,7 @@ async function main(): Promise<void> {
   let updated = 0;
   let newSales = 0;
   let newPurchases = 0;
+  let datesFixed = 0;
 
   for (const row of mails.rows) {
     const mail = parseMail(row.raw);
@@ -27,6 +28,18 @@ async function main(): Promise<void> {
       [row.id, mail.sender, mail.subject, mail.sentAt, MAIL_PARSER_VERSION],
     );
     updated += changed.rowCount ?? 0;
+
+    // Sales derived before the positional-format fix fell back to the upload
+    // time for occurred_at; repair them from the mail's real timestamp.
+    if (mail.sentAt) {
+      for (const table of ["mail_sales", "mail_purchases"]) {
+        const repaired = await pool.query(
+          `UPDATE ${table} SET occurred_at=$2 WHERE mail_id=$1 AND occurred_at IS DISTINCT FROM $2 RETURNING id`,
+          [row.id, mail.sentAt],
+        );
+        datesFixed += repaired.rowCount ?? 0;
+      }
+    }
 
     const sale = parseSale(mail);
     if (sale) {
@@ -50,7 +63,7 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`Reparsed ${mails.rowCount} mails with parser ${MAIL_PARSER_VERSION}: ${updated} headers refreshed, ${newSales} new sales and ${newPurchases} new purchases derived.`);
+  console.log(`Reparsed ${mails.rowCount} mails with parser ${MAIL_PARSER_VERSION}: ${updated} headers refreshed, ${newSales} new sales and ${newPurchases} new purchases derived, ${datesFixed} trade dates repaired.`);
   await pool.end();
 }
 
