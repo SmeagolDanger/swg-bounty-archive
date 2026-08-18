@@ -20,7 +20,14 @@ export function AccountPanel({ username, avatar }: { username: string; avatar: s
     if (response.ok) setTokens((await response.json()).tokens);
   }
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch("/api/account/tokens");
+      if (!cancelled && response.ok) setTokens((await response.json()).tokens);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   async function createToken() {
     const name = newTokenName.trim() || "Mail companion";
