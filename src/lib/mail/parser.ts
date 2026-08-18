@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 // Every uploaded mail is archived raw, so this parser can be revised and
 // re-run over history at any time — parse failures never lose data.
 
-export const MAIL_PARSER_VERSION = "1.2.0";
+export const MAIL_PARSER_VERSION = "1.3.0";
 
 export interface ParsedMail {
   fingerprint: string;
@@ -32,6 +32,13 @@ export interface ParsedSale {
   credits: number;
   vendor: string;
   saleType: "vendor" | "bazaar";
+}
+
+// Unix stamp in seconds or milliseconds; anything else is not a date.
+function timestampFrom(value: string): Date | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return new Date(numeric > 1e12 ? numeric : numeric * 1_000);
 }
 
 export function mailFingerprint(raw: string): string {
@@ -55,15 +62,19 @@ export function parseMail(raw: string): ParsedMail {
       bodyStart = index + 1;
       continue;
     }
-    const header = /^([A-Z]+):\s?(.*)$/.exec(line);
-    if (header && ["FROM", "SUBJECT", "TIMESTAMP"].includes(header[1])) {
+    const header = /^([A-Za-z]+):\s?(.*)$/.exec(line);
+    if (header && ["FROM", "SUBJECT", "TIMESTAMP"].includes(header[1].toUpperCase())) {
       const [, key, value] = header;
-      if (key === "FROM") sender = value.trim();
-      else if (key === "SUBJECT") subject = value.trim();
-      else if (key === "TIMESTAMP") {
-        const seconds = Number(value.trim());
-        if (Number.isFinite(seconds) && seconds > 0) sentAt = new Date(seconds * 1_000);
-      }
+      if (key.toUpperCase() === "FROM") sender = value.trim();
+      else if (key.toUpperCase() === "SUBJECT") subject = value.trim();
+      else if (sentAt === null) sentAt = timestampFrom(value.trim());
+      bodyStart = index + 1;
+      continue;
+    }
+    // Positional timestamp: some /mailsave variants write the unix stamp as
+    // a bare number line after sender and subject, with no prefix at all.
+    if (sentAt === null && index > 0 && (sender !== "" || subject !== "") && /^\d{9,13}$/.test(line.trim())) {
+      sentAt = timestampFrom(line.trim());
       bodyStart = index + 1;
       continue;
     }

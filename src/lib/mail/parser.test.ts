@@ -112,3 +112,22 @@ describe("purchase parsing", () => {
     expect(parsePurchase(parseMail(vendorMail))).toBeNull();
   });
 });
+
+describe("timestamp variants", () => {
+  it("parses a bare positional unix stamp line", () => {
+    const mail = parseMail("184001\nSWG.Omega.auctioner\nVendor Sale Complete\n1733076000\n\nVendor: Hangar Nine has sold [Mark V Reactor] to Wrollo for 250,000 credits.");
+    expect(mail.subject).toBe("Vendor Sale Complete");
+    expect(mail.sentAt?.toISOString()).toBe("2024-12-01T18:00:00.000Z");
+    expect(mail.body.startsWith("Vendor:")).toBe(true);
+    expect(parseSale(mail)?.itemName).toBe("Mark V Reactor");
+  });
+
+  it("parses millisecond stamps and lowercase prefixes", () => {
+    const ms = parseMail("184002\nSender\nSubject\n1733076000000\n\nbody");
+    expect(ms.sentAt?.toISOString()).toBe("2024-12-01T18:00:00.000Z");
+    const lower = parseMail("184003\nFrom: Sender\nSubject: Hello\ntimestamp: 1733076000\n\nbody");
+    expect(lower.sender).toBe("Sender");
+    expect(lower.subject).toBe("Hello");
+    expect(lower.sentAt?.toISOString()).toBe("2024-12-01T18:00:00.000Z");
+  });
+});
