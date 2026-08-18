@@ -15,6 +15,12 @@ type Config struct {
 	Server      string   `json:"server"`
 	MailDirs    []string `json:"mailDirs"`
 	PollSeconds int      `json:"pollSeconds"`
+
+	// Live DPS stream (chat log tail). Enabled by default; set disableDps
+	// to true to turn it off. chatLogDirs may list files or folders.
+	ChatLogDirs     []string `json:"chatLogDirs"`
+	ChatPollSeconds int      `json:"chatPollSeconds"`
+	DisableDps      bool     `json:"disableDps"`
 }
 
 func configDir() string {
@@ -43,6 +49,9 @@ func loadConfig() (Config, error) {
 	if config.PollSeconds < 15 {
 		config.PollSeconds = 60
 	}
+	if config.ChatPollSeconds < 1 {
+		config.ChatPollSeconds = 2
+	}
 	return config, err
 }
 
@@ -55,6 +64,7 @@ func writeConfigTemplate() error {
 		Server:      "https://jawatracks.com",
 		MailDirs:    []string{},
 		PollSeconds: 60,
+		ChatLogDirs: []string{},
 	}
 	data, _ := json.MarshalIndent(template, "", "  ")
 	return os.WriteFile(configPath(), data, 0o600)

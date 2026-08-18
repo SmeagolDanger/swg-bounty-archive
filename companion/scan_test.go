@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCharacterName(t *testing.T) {
@@ -71,5 +72,69 @@ func TestDiscoverAcceptsSWGAideStyleArchive(t *testing.T) {
 	}
 	if got := characterName(char); got != "Chickenrat" {
 		t.Fatalf("characterName = %q", got)
+	}
+}
+
+func TestCombatSuspect(t *testing.T) {
+	yes := []string{
+		"[Combat] 21:14:03 Beefy attacks a krayt with Sniper Shot and crits for 8342 points",
+		"12:00:01 A womp rat attacks Beefy and hits for 210 points",
+		"[Combat] 11:12:00 A womp rat is no more.",
+	}
+	no := []string{
+		"Beefy attacks a womp rat for 100 points", // no timestamp
+		"[Combat] 11:11:11 Beefy says hello there",
+		"21:14:03 Beefy tells you good hunting",
+	}
+	for _, line := range yes {
+		if !combatSuspect(line) {
+			t.Errorf("expected combat suspect: %q", line)
+		}
+	}
+	for _, line := range no {
+		if combatSuspect(line) {
+			t.Errorf("expected non-combat: %q", line)
+		}
+	}
+}
+
+func TestLineTimestampMidnightWrap(t *testing.T) {
+	now := time.Date(2026, 8, 18, 0, 0, 30, 0, time.UTC)
+	at := lineTimestamp("[Combat] 23:59:58 Beefy attacks a rat and hits for 5 points", now)
+	parsed, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Day() != 17 {
+		t.Errorf("expected previous day for pre-midnight stamp, got %v", parsed)
+	}
+}
+
+func TestTailFileResume(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chatlog.txt")
+	if err := os.WriteFile(path, []byte("line one\r\nline two\r\npartial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	offset, lines := tailFile(path, 0)
+	if len(lines) != 2 || lines[0] != "line one" || lines[1] != "line two" {
+		t.Fatalf("unexpected lines: %v", lines)
+	}
+	// Partial line stays unread until the newline lands.
+	if _, more := tailFile(path, offset); more != nil {
+		t.Fatalf("expected no complete lines, got %v", more)
+	}
+	file, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	file.WriteString(" done\n")
+	file.Close()
+	offset, lines = tailFile(path, offset)
+	if len(lines) != 1 || lines[0] != "partial done" {
+		t.Fatalf("unexpected completion: %v", lines)
+	}
+	// Truncation (rotation) resets to the top.
+	if err := os.WriteFile(path, []byte("fresh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, lines = tailFile(path, offset); len(lines) != 1 || lines[0] != "fresh" {
+		t.Fatalf("expected rotation restart, got %v", lines)
 	}
 }

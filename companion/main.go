@@ -57,6 +57,10 @@ func runLoop(config Config, sink statusSink) {
 	state := loadState()
 	interval := time.Duration(config.PollSeconds) * time.Second
 
+	if !config.DisableDps {
+		go chatLoop(config, sink)
+	}
+
 	for {
 		dirs := discoverMailDirs(config.MailDirs)
 		if len(dirs) == 0 {
