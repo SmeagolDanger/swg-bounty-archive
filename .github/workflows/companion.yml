@@ -1,0 +1,31 @@
+name: Build mail companion
+
+on:
+  push:
+    branches: [main]
+    paths: ["companion/**", ".github/workflows/companion.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: companion/go.sum
+      - name: Test
+        working-directory: companion
+        run: go test ./...
+      - name: Build Windows executable
+        working-directory: companion
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -ldflags "-s -w -X main.version=${GITHUB_SHA::7} -H windowsgui" -o JawaTracksCompanion.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JawaTracksCompanion
+          path: companion/JawaTracksCompanion.exe
