@@ -18,6 +18,14 @@ several PCs or re-uploading old folders never double-counts a sale.
    `profiles\<account>\<galaxy>\mail_<character>\`). The companion finds the
    usual install paths; add yours to `"mailDirs"` if it's somewhere unusual.
 
+## Importing your SWGAide history
+
+SWGAide archives mails into its own folder (usually `SWGAide\mails\<Character>\`).
+Add that folder to `"mailDirs"` and the companion imports the entire history
+on first run — timestamps come from each mail, so historical sales land on
+their real dates. Everything is deduplicated by content, so overlapping
+game and SWGAide folders never double-count.
+
 Sales appear in the Jawa Tracks app under **Tools → Sales Tracker** within a
 minute of upload.
 

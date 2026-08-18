@@ -59,3 +59,17 @@ func TestDiscoverAcceptsExplicitMailDir(t *testing.T) {
 		t.Fatalf("discover nested = %v", dirs)
 	}
 }
+
+func TestDiscoverAcceptsSWGAideStyleArchive(t *testing.T) {
+	root := t.TempDir()
+	char := filepath.Join(root, "Chickenrat")
+	_ = os.MkdirAll(char, 0o755)
+	_ = os.WriteFile(filepath.Join(char, "1.mail"), []byte("x"), 0o644)
+	dirs := discoverMailDirs([]string{root})
+	if len(dirs) != 1 || dirs[0] != char {
+		t.Fatalf("discover swgaide = %v", dirs)
+	}
+	if got := characterName(char); got != "Chickenrat" {
+		t.Fatalf("characterName = %q", got)
+	}
+}

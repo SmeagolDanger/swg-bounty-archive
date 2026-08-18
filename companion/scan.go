@@ -43,10 +43,39 @@ func discoverMailDirs(configured []string) []string {
 			dirs = append(dirs, root)
 			continue
 		}
+		// Game install root: profiles/<station>/<galaxy>/mail_<character>.
 		matches, _ := filepath.Glob(filepath.Join(root, "profiles", "*", "*", "mail_*"))
 		dirs = append(dirs, matches...)
+		// Archive layouts (e.g. SWGAide's mails/<Character>/): accept any
+		// configured folder that itself holds .mail files, and one level of
+		// per-character subfolders that do.
+		if direct, _ := filepath.Glob(filepath.Join(root, "*.mail")); len(direct) > 0 {
+			dirs = append(dirs, root)
+		}
+		children, _ := os.ReadDir(root)
+		for _, child := range children {
+			if !child.IsDir() {
+				continue
+			}
+			childPath := filepath.Join(root, child.Name())
+			if nested, _ := filepath.Glob(filepath.Join(childPath, "*.mail")); len(nested) > 0 {
+				dirs = append(dirs, childPath)
+			}
+		}
 	}
-	return dirs
+	return dedupe(dirs)
+}
+
+func dedupe(paths []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, path := range paths {
+		if !seen[path] {
+			seen[path] = true
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 func characterName(mailDir string) string {
