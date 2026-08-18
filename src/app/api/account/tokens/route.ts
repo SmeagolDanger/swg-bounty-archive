@@ -2,10 +2,13 @@ import { z } from "zod";
 import { pool } from "@/lib/db/client";
 import { authedUser } from "@/lib/auth/session";
 import { mintToken } from "@/lib/auth/tokens";
+import { rateLimited } from "@/lib/rate-limit";
 
 // Companion API tokens: listed masked, created once with the secret shown a
 // single time, revocable. Used by the mail companion's uploads.
 export async function GET(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   const user = await authedUser(request);
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
   const tokens = await pool.query(
@@ -17,6 +20,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   const user = await authedUser(request);
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
   const parsed = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(await request.json().catch(() => null));

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pool } from "@/lib/db/client";
 import { authedUser } from "@/lib/auth/session";
+import { rateLimited } from "@/lib/rate-limit";
 
 // Cross-device store sync: last-write-wins per item on updated_at, with
 // tombstones so deletions travel. GET returns items changed since a
@@ -17,6 +18,8 @@ const itemSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   const user = await authedUser(request);
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
   const sinceRaw = new URL(request.url).searchParams.get("since");
@@ -39,6 +42,8 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   const user = await authedUser(request);
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
   const parsed = z.object({ items: z.array(itemSchema).max(2000) }).safeParse(await request.json().catch(() => null));

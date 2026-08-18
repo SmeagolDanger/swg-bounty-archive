@@ -1,10 +1,13 @@
 import { cookies } from "next/headers";
 import { authBaseUrl, exchangeCode, upsertUser } from "@/lib/auth/discord";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
+import { rateLimited } from "@/lib/rate-limit";
 
 // Completes Discord OAuth. Web clients get the session cookie and land on
 // /account; the app gets its session token via the jawatracks:// deep link.
 export async function GET(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state") ?? "";

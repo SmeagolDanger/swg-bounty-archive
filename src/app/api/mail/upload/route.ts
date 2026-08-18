@@ -2,6 +2,7 @@ import { z } from "zod";
 import { pool } from "@/lib/db/client";
 import { userForApiToken, authedUser } from "@/lib/auth/session";
 import { MAIL_PARSER_VERSION, parseMail, parseSale } from "@/lib/mail/parser";
+import { rateLimited } from "@/lib/rate-limit";
 
 // Mail companion upload: a batch of raw /mailsave files. Every mail is
 // archived verbatim and deduplicated by content fingerprint; sales are
@@ -12,6 +13,8 @@ const uploadSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limited = rateLimited(request);
+  if (limited) return limited;
   const user = (await userForApiToken(request)) ?? (await authedUser(request));
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
   const parsed = uploadSchema.safeParse(await request.json().catch(() => null));
