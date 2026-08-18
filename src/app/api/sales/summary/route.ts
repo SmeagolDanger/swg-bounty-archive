@@ -7,12 +7,19 @@ export async function GET(request: Request) {
   if (limited) return limited;
   const user = (await authedUser(request)) ?? (await userForApiToken(request));
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const character = new URL(request.url).searchParams.get("character")?.trim() || null;
+  const url = new URL(request.url);
+  const character = url.searchParams.get("character")?.trim() || null;
+  // Day buckets follow the caller's timezone so "today" and the daily chart
+  // match the player's clock, not UTC. Unknown names fall back to UTC.
+  const tzRaw = url.searchParams.get("tz")?.trim() || "UTC";
+  const tzOk = /^[A-Za-z0-9_+\-/]{1,64}$/.test(tzRaw)
+    && (await pool.query("SELECT 1 FROM pg_timezone_names WHERE name=$1", [tzRaw])).rowCount === 1;
+  const tz = tzOk ? tzRaw : "UTC";
 
   const windows = await pool.query(
     `SELECT
-       count(*) FILTER (WHERE occurred_at >= date_trunc('day', now()))::int AS today_sales,
-       coalesce(sum(credits) FILTER (WHERE occurred_at >= date_trunc('day', now())), 0)::float8 AS today_credits,
+       count(*) FILTER (WHERE (occurred_at AT TIME ZONE $3)::date = (now() AT TIME ZONE $3)::date)::int AS today_sales,
+       coalesce(sum(credits) FILTER (WHERE (occurred_at AT TIME ZONE $3)::date = (now() AT TIME ZONE $3)::date), 0)::float8 AS today_credits,
        count(*) FILTER (WHERE occurred_at >= now() - interval '7 days')::int AS week_sales,
        coalesce(sum(credits) FILTER (WHERE occurred_at >= now() - interval '7 days'), 0)::float8 AS week_credits,
        count(*) FILTER (WHERE occurred_at >= now() - interval '30 days')::int AS month_sales,
@@ -22,7 +29,7 @@ export async function GET(request: Request) {
        coalesce(avg(credits), 0)::float8 AS average_credits,
        coalesce(max(credits), 0)::float8 AS best_credits
      FROM mail_sales WHERE user_id=$1 AND ($2::text IS NULL OR character_name=$2)`,
-    [user.id, character],
+    [user.id, character, tz],
   );
   const topItems = await pool.query(
     `SELECT item_name, count(*)::int AS sales, sum(credits)::float8 AS credits
@@ -32,14 +39,14 @@ export async function GET(request: Request) {
     [user.id, character],
   );
   const daily = await pool.query(
-    `WITH days AS (SELECT generate_series((now() - interval '13 days')::date, now()::date, '1 day')::date AS day)
+    `WITH days AS (SELECT generate_series(((now() AT TIME ZONE $3)::date - 13), (now() AT TIME ZONE $3)::date, '1 day')::date AS day)
      SELECT days.day::text AS day,
        coalesce(count(s.id), 0)::int AS sales,
        coalesce(sum(s.credits), 0)::float8 AS credits
      FROM days LEFT JOIN mail_sales s
-       ON s.user_id=$1 AND s.occurred_at::date = days.day AND ($2::text IS NULL OR s.character_name=$2)
+       ON s.user_id=$1 AND (s.occurred_at AT TIME ZONE $3)::date = days.day AND ($2::text IS NULL OR s.character_name=$2)
      GROUP BY days.day ORDER BY days.day`,
-    [user.id, character],
+    [user.id, character, tz],
   );
   const purchases = await pool.query(
     `SELECT

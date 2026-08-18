@@ -84,7 +84,7 @@ suite("accounts, sync, and mail pipeline", () => {
     }));
     expect(await again.json()).toMatchObject({ archived: 0, duplicates: 1, sales: 0 });
 
-    const summary = await salesGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/summary"));
+    const summary = await salesGet(bearer(sessionToken, { method: "GET" }, "https://test.local/api/sales/summary?tz=America/Halifax"));
     const body = await summary.json();
     expect(body.summary.total_sales).toBe(2);
     expect(body.summary.total_credits).toBe(500_000);
