@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 // Every uploaded mail is archived raw, so this parser can be revised and
 // re-run over history at any time — parse failures never lose data.
 
-export const MAIL_PARSER_VERSION = "1.3.0";
+export const MAIL_PARSER_VERSION = "1.4.0";
 
 export interface ParsedMail {
   fingerprint: string;
@@ -57,7 +57,8 @@ export function parseMail(raw: string): ParsedMail {
 
   for (let index = 0; index < Math.min(lines.length, 8); index += 1) {
     const line = lines[index];
-    if (index === 0 && /^\d+$/.test(line.trim())) {
+    // The id line is "<id>" or "<id>_<unix stamp>" (live Omega mailsaves).
+    if (index === 0 && /^\d+(?:_\d+)?$/.test(line.trim())) {
       mailId = line.trim();
       bodyStart = index + 1;
       continue;
@@ -92,6 +93,12 @@ export function parseMail(raw: string): ParsedMail {
       continue;
     }
     if (bodyStart > 0) break;
+  }
+
+  // Last resort: the id line's "_<unix>" suffix carries the same stamp.
+  if (sentAt === null) {
+    const suffix = /_(\d{9,13})$/.exec(mailId);
+    if (suffix) sentAt = timestampFrom(suffix[1]);
   }
 
   return {

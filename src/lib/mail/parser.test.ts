@@ -131,3 +131,24 @@ describe("timestamp variants", () => {
     expect(lower.sentAt?.toISOString()).toBe("2024-12-01T18:00:00.000Z");
   });
 });
+
+describe("live Omega mailsave format", () => {
+  // Exact shape confirmed from production raws: underscore id line,
+  // positional sender/subject, prefixed TIMESTAMP, no blank before body.
+  const raw = "61241977_1770481480\r\nSWG.Omega.auctioner\r\nVendor Sale Complete\r\nTIMESTAMP: 1770481480\r\nVendor: Hangar Nine has sold [Mark V Reactor] to Wrollo for 250,000 credits.";
+
+  it("aligns headers despite the underscore id line", () => {
+    const mail = parseMail(raw);
+    expect(mail.mailId).toBe("61241977_1770481480");
+    expect(mail.sender).toBe("SWG.Omega.auctioner");
+    expect(mail.subject).toBe("Vendor Sale Complete");
+    expect(mail.sentAt?.getTime()).toBe(1770481480 * 1000);
+    expect(mail.body.startsWith("Vendor:")).toBe(true);
+    expect(parseSale(mail)?.buyer).toBe("Wrollo");
+  });
+
+  it("falls back to the id suffix when no TIMESTAMP line exists", () => {
+    const mail = parseMail("61241977_1770481480\nSWG.Omega.auctioner\nSubject\nbody text here");
+    expect(mail.sentAt?.getTime()).toBe(1770481480 * 1000);
+  });
+});
