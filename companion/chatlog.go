@@ -183,6 +183,7 @@ func chatLoop(sink statusSink) {
 	var files []string
 	rescan := 0
 	streamed := 0
+	lastLine := map[string]string{} // consecutive-duplicate guard, per file
 
 	for {
 		config := conf()
@@ -217,6 +218,12 @@ func chatLoop(sink statusSink) {
 			now := time.Now()
 			var events []ChatEvent
 			for index, line := range lines {
+				// SWG sometimes writes the same combat line twice in a row;
+				// drop exact consecutive repeats like SWGLogAnalyzer does.
+				if line == lastLine[path] {
+					continue
+				}
+				lastLine[path] = line
 				if !combatSuspect(line) {
 					continue
 				}
