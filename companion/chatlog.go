@@ -54,20 +54,29 @@ func lineTimestamp(line string, now time.Time) string {
 	return stamped.Format(time.RFC3339)
 }
 
-// Chat log discovery mirrors mail discovery: explicit chatLogDirs entries
-// (files or folders) plus the usual spots under every configured root.
+// Chat log discovery: explicit chatLogDirs entries (files are taken as-is)
+// plus likely folders under every configured root. Filenames are NOT
+// trusted — SWG servers name chat logs differently and Windows users mix
+// case — so any .txt whose tail contains combat-stamped lines qualifies.
 func discoverChatLogs(configured []string, mailRoots []string) []string {
 	seen := map[string]bool{}
 	var files []string
-	add := func(path string) {
+	addFile := func(path string, sniff bool) {
 		if path == "" || seen[path] {
 			return
 		}
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			seen[path] = true
-			files = append(files, path)
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			return
 		}
+		if sniff && !looksLikeCombatLog(path) {
+			return
+		}
+		seen[path] = true
+		files = append(files, path)
 	}
+
+	var dirs []string
 	roots := append([]string{}, mailRoots...)
 	if len(roots) == 0 {
 		roots = defaultRoots
@@ -78,25 +87,70 @@ func discoverChatLogs(configured []string, mailRoots []string) []string {
 				roots = append(roots, entry)
 				continue
 			}
-			add(entry)
+			addFile(entry, false) // explicitly configured files always count
 		}
 	}
 	for _, root := range roots {
-		for _, pattern := range []string{
-			filepath.Join(root, "chatlog*.txt"),
-			filepath.Join(root, "chatlogs", "*.txt"),
-			filepath.Join(root, "logs", "*.txt"),
-			filepath.Join(root, "profiles", "*", "*", "chatlog*.txt"),
-			filepath.Join(root, "profiles", "*", "*", "chatlogs", "*.txt"),
-			filepath.Join(root, "profiles", "*", "*", "logs", "*.txt"),
-		} {
-			matches, _ := filepath.Glob(pattern)
-			for _, match := range matches {
-				add(match)
+		dirs = append(dirs, root,
+			filepath.Join(root, "logs"),
+			filepath.Join(root, "chatlogs"))
+		profiles, _ := filepath.Glob(filepath.Join(root, "profiles", "*", "*"))
+		for _, profile := range profiles {
+			dirs = append(dirs, profile,
+				filepath.Join(profile, "logs"),
+				filepath.Join(profile, "chatlogs"))
+		}
+	}
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".txt") {
+				continue
 			}
+			addFile(filepath.Join(dir, entry.Name()), true)
 		}
 	}
 	return files
+}
+
+// Reads the last few KB and looks for combat-stamped lines, so discovery
+// keys on what a file contains instead of what it happens to be named.
+func looksLikeCombatLog(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() == 0 {
+		return false
+	}
+	const window = 8192
+	offset := info.Size() - window
+	if offset < 0 {
+		offset = 0
+	}
+	if _, err := file.Seek(offset, 0); err != nil {
+		return false
+	}
+	chunk := make([]byte, min64(window, info.Size()))
+	read, _ := file.Read(chunk)
+	for _, line := range strings.Split(string(chunk[:read]), "\n") {
+		if combatStamp.MatchString(strings.TrimRight(line, "\r")) {
+			return true
+		}
+	}
+	return false
+}
+
+func min64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 type ChatEvent struct {

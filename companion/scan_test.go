@@ -138,3 +138,35 @@ func TestTailFileResume(t *testing.T) {
 		t.Fatalf("expected rotation restart, got %v", lines)
 	}
 }
+
+func TestDiscoverChatLogsByContent(t *testing.T) {
+	root := t.TempDir()
+	galaxy := filepath.Join(root, "profiles", "stormymichael", "Omega")
+	if err := os.MkdirAll(galaxy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	combat := "[Combat] 21:14:03 Beefy attacks a womp rat and hits for 210 points\r\n"
+	// Oddly-named chat log with combat content: must be found.
+	os.WriteFile(filepath.Join(galaxy, "SWGChat_2026.TXT"), []byte(combat), 0o600)
+	// Plain notes file without combat lines: must be ignored.
+	os.WriteFile(filepath.Join(galaxy, "notes.txt"), []byte("shopping list\nmore notes\n"), 0o600)
+	// Non-txt file with combat content: ignored unless explicitly configured.
+	os.WriteFile(filepath.Join(galaxy, "combat.log"), []byte(combat), 0o600)
+
+	found := discoverChatLogs(nil, []string{root})
+	if len(found) != 1 || filepath.Base(found[0]) != "SWGChat_2026.TXT" {
+		t.Fatalf("expected only the combat-content txt, got %v", found)
+	}
+
+	// Pointing straight at the galaxy folder works too.
+	found = discoverChatLogs([]string{galaxy}, nil)
+	if len(found) != 1 {
+		t.Fatalf("expected discovery from configured galaxy dir, got %v", found)
+	}
+
+	// Explicitly configured files are trusted regardless of name or content.
+	found = discoverChatLogs([]string{filepath.Join(galaxy, "combat.log")}, []string{})
+	if len(found) != 1 || filepath.Base(found[0]) != "combat.log" {
+		t.Fatalf("expected explicit file to be accepted, got %v", found)
+	}
+}
