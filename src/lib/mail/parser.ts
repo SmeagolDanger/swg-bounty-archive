@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 // Every uploaded mail is archived raw, so this parser can be revised and
 // re-run over history at any time — parse failures never lose data.
 
-export const MAIL_PARSER_VERSION = "1.0.0";
+export const MAIL_PARSER_VERSION = "1.1.0";
 
 export interface ParsedMail {
   fingerprint: string;
@@ -46,15 +46,17 @@ export function parseMail(raw: string): ParsedMail {
   let subject = "";
   let sentAt: Date | null = null;
   let bodyStart = 0;
+  let positional = 0; // count of unprefixed header lines consumed
 
   for (let index = 0; index < Math.min(lines.length, 8); index += 1) {
     const line = lines[index];
     if (index === 0 && /^\d+$/.test(line.trim())) {
       mailId = line.trim();
+      bodyStart = index + 1;
       continue;
     }
     const header = /^([A-Z]+):\s?(.*)$/.exec(line);
-    if (header) {
+    if (header && ["FROM", "SUBJECT", "TIMESTAMP"].includes(header[1])) {
       const [, key, value] = header;
       if (key === "FROM") sender = value.trim();
       else if (key === "SUBJECT") subject = value.trim();
@@ -69,6 +71,16 @@ export function parseMail(raw: string): ParsedMail {
       bodyStart = index + 1;
       break;
     }
+    // The live /mailsave format is positional: after the numeric id, the
+    // next two lines are sender then subject with no prefixes.
+    if (sentAt === null && positional < 2 && line.trim() !== "") {
+      if (positional === 0 && sender === "") sender = line.trim();
+      else if (subject === "") subject = line.trim();
+      positional += 1;
+      bodyStart = index + 1;
+      continue;
+    }
+    if (bodyStart > 0) break;
   }
 
   return {

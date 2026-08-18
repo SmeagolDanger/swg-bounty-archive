@@ -62,3 +62,21 @@ describe("SWG mailsave parser", () => {
     expect(parseSale(parseMail(chatterMail))).toBeNull();
   });
 });
+
+const positionalMail = `184470
+SWG.Omega.auctioner
+Vendor Sale Complete
+TIMESTAMP: 1755471000
+
+Vendor: Hangar Nine has sold [Mark I Booster] to Skippi for 12,000 credits.`;
+
+describe("positional mailsave format (live SWG output)", () => {
+  it("reads sender and subject from unprefixed lines", () => {
+    const mail = parseMail(positionalMail);
+    expect(mail.mailId).toBe("184470");
+    expect(mail.sender).toBe("SWG.Omega.auctioner");
+    expect(mail.subject).toBe("Vendor Sale Complete");
+    expect(mail.sentAt?.toISOString()).toBe(new Date(1755471000 * 1000).toISOString());
+    expect(parseSale(mail)?.credits).toBe(12_000);
+  });
+});
