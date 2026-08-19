@@ -219,6 +219,10 @@ func lineFingerprint(path string, offset int64, index int, line string) string {
 // shared file.
 type ChatState struct {
 	Offsets map[string]int64 `json:"offsets"`
+	// Files whose full history has been imported. Tracked separately from
+	// offsets because earlier versions recorded offsets while SKIPPING the
+	// backlog — those files still owe an import.
+	Imported map[string]bool `json:"imported"`
 }
 
 func chatStatePath() string { return filepath.Join(configDir(), "chatstate.json") }
@@ -230,6 +234,9 @@ func loadChatState() ChatState {
 	}
 	if state.Offsets == nil {
 		state.Offsets = map[string]int64{}
+	}
+	if state.Imported == nil {
+		state.Imported = map[string]bool{}
 	}
 	return state
 }
@@ -261,15 +268,17 @@ func chatLoop(sink statusSink) {
 
 		for _, path := range files {
 			offset := state.Offsets[path]
-			// First sight of a file: import its whole backlog, dated by the
-			// "Logging In [...]" session markers, then tail live from there.
-			if _, tracked := state.Offsets[path]; !tracked {
+			// Any file not yet fully imported gets its whole backlog first,
+			// dated by the "Logging In [...]" session markers — including
+			// files an older version offset-tracked while skipping history.
+			if !state.Imported[path] {
 				sink.status(fmt.Sprintf("Importing combat history from %s…", shortName(path)))
 				end, done := importHistory(config, path, sink)
 				if !done {
 					continue // upload trouble; retried next cycle
 				}
 				state.Offsets[path] = end
+				state.Imported[path] = true
 				state.save()
 				continue
 			}
