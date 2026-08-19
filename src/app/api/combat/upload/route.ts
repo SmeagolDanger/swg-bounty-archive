@@ -31,7 +31,9 @@ export async function POST(request: Request) {
   const parsed = uploadSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "invalid upload", issues: parsed.error.issues }, { status: 400 });
 
-  let stored = 0;
+  // Set-based insert: history imports push hundreds of batches, and
+  // per-row round trips would crawl. One statement stores the whole batch.
+  const columns = { fingerprint: [] as string[], kind: [] as string[], source: [] as string[], target: [] as string[], ability: [] as string[], amount: [] as number[], flag: [] as string[], raw: [] as string[], at: [] as Date[] };
   let duplicates = 0;
   let unparsed = 0;
   let ignored = 0;
@@ -40,9 +42,9 @@ export async function POST(request: Request) {
     const occurredAt = item.at ? new Date(item.at) : new Date();
     if (!event) {
       const kept = await pool.query(
-        `INSERT INTO combat_unparsed(user_id, fingerprint, raw)
-         VALUES($1, $2, $3) ON CONFLICT(user_id, fingerprint) DO NOTHING RETURNING id`,
-        [user.id, item.fingerprint, item.raw],
+        `INSERT INTO combat_unparsed(user_id, fingerprint, raw, occurred_at)
+         VALUES($1, $2, $3, $4) ON CONFLICT(user_id, fingerprint) DO NOTHING RETURNING id`,
+        [user.id, item.fingerprint, item.raw, occurredAt],
       );
       if (kept.rowCount) unparsed += 1;
       else duplicates += 1;
@@ -52,27 +54,32 @@ export async function POST(request: Request) {
       ignored += 1;
       continue;
     }
+    columns.fingerprint.push(item.fingerprint);
+    columns.kind.push(event.kind);
+    columns.source.push(event.source);
+    columns.target.push(event.target);
+    columns.ability.push(event.ability);
+    columns.amount.push(event.amount);
+    columns.flag.push(event.flag);
+    columns.raw.push(item.raw);
+    columns.at.push(occurredAt);
+  }
+  let stored = 0;
+  if (columns.fingerprint.length) {
     const inserted = await pool.query(
       `INSERT INTO combat_events(user_id, fingerprint, character_name, kind, source, target, ability, amount, flag, raw, parser_version, occurred_at)
-       VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       SELECT $1, u.fingerprint, $2, u.kind, u.source, u.target, u.ability, u.amount, u.flag, u.raw, $3, u.occurred_at
+       FROM unnest($4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::bigint[], $10::text[], $11::text[], $12::timestamptz[])
+         AS u(fingerprint, kind, source, target, ability, amount, flag, raw, occurred_at)
        ON CONFLICT(user_id, fingerprint) DO NOTHING RETURNING id`,
       [
-        user.id,
-        item.fingerprint,
-        parsed.data.characterName,
-        event.kind,
-        event.source,
-        event.target,
-        event.ability,
-        event.amount,
-        event.flag,
-        item.raw,
-        COMBAT_PARSER_VERSION,
-        occurredAt,
+        user.id, parsed.data.characterName, COMBAT_PARSER_VERSION,
+        columns.fingerprint, columns.kind, columns.source, columns.target, columns.ability,
+        columns.amount, columns.flag, columns.raw, columns.at,
       ],
     );
-    if (inserted.rowCount) stored += 1;
-    else duplicates += 1;
+    stored = inserted.rowCount ?? 0;
+    duplicates += columns.fingerprint.length - stored;
   }
   return Response.json({ stored, duplicates, unparsed, ignored });
 }

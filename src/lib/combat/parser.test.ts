@@ -54,3 +54,31 @@ describe("combat parser", () => {
     expect(parseCombatLine("11:11:11 Beefy attacks a womp rat and hits for 99999 points")).toBeNull();
   });
 });
+
+describe("Omega line shapes from real logs", () => {
+  it("parses bare misses", () => {
+    expect(parseCombatLine("[Combat]  00:09:05 Suin Chalo attacks RalphieJames using Power Hammer and misses."))
+      .toMatchObject({ kind: "avoid", source: "Suin Chalo", target: "RalphieJames", flag: "miss" });
+  });
+
+  it("parses has-taken DoT ticks with and without element", () => {
+    expect(parseCombatLine("[Combat]  23:08:05 Jurius Noble has taken 1125 points of bleeding damage. (375 absorbed / 0 resisted. )"))
+      .toMatchObject({ kind: "damage", target: "Jurius Noble", amount: 1125, ability: "bleeding", flag: "periodic" });
+    expect(parseCombatLine("[Combat]  23:08:06 a blacksun boarder has taken 90 points of damage."))
+      .toMatchObject({ kind: "damage", target: "a blacksun boarder", amount: 90, flag: "periodic" });
+  });
+
+  it("parses wracked, agony, and you-healed lines", () => {
+    expect(parseCombatLine("[Combat]  10:00:00 O'dae Alca is wracked with crippling pain for 388 points of damage!"))
+      .toMatchObject({ kind: "damage", target: "O'dae Alca", amount: 388, flag: "periodic" });
+    expect(parseCombatLine("[Combat]  22:37:29 You are rent by agony sharing 507 points of damage."))
+      .toMatchObject({ kind: "damage", target: "You", amount: 507 });
+    expect(parseCombatLine("[Combat]  22:37:30 You have healed RalphieJames Otapae for 2000 points of damage."))
+      .toMatchObject({ kind: "heal", source: "You", target: "RalphieJames Otapae", amount: 2000 });
+  });
+
+  it("still parses the real attack line from production logs", () => {
+    expect(parseCombatLine("[Combat]  18:34:38 RalphieJames attacks Nym's guard with Sweep 7: Sai tok Jung Ma and hits for 2821 points (2666 energy and 155 heat). Armor absorbed 1128 points out of 3949."))
+      .toMatchObject({ kind: "damage", source: "RalphieJames", target: "Nym's guard", ability: "Sweep 7: Sai tok Jung Ma", amount: 2821, flag: "hit" });
+  });
+});

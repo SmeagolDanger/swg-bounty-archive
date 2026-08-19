@@ -61,9 +61,17 @@ type combatResult struct {
 	Ignored    int `json:"ignored"`
 }
 
+// Test seam: when set, uploadCombat hands batches to this hook instead of
+// the network.
+var captureUpload func([]ChatEvent)
+
 // Ships a batch of combat lines; the server dedupes by fingerprint, so
 // retries after a failed poll are always safe.
 func uploadCombat(config Config, events []ChatEvent) (combatResult, error) {
+	if captureUpload != nil {
+		captureUpload(events)
+		return combatResult{Stored: len(events)}, nil
+	}
 	payload := struct {
 		Events []ChatEvent `json:"events"`
 	}{Events: events}

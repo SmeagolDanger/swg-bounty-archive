@@ -92,7 +92,8 @@ function normalize(events: CombatEventInput[]): CombatEventInput[] {
       const key = `${event.ability.toLowerCase()}||${target}`;
       const dotSelfSourced = event.flag === "periodic" && (event.source === event.ability || event.source === "Periodic");
       if (dotSelfSourced) {
-        source = lastCaster.get(key) ?? lastSource.get(target) ?? source;
+        // Unresolvable ticks stay unattributed rather than posing as players.
+        source = lastCaster.get(key) ?? lastSource.get(target) ?? "";
       } else {
         if (event.flag !== "periodic") lastSource.set(target, source);
         lastCaster.set(key, source);
@@ -113,15 +114,17 @@ function buildEncounter(events: CombatEventInput[]): Encounter {
   const deaths: string[] = [];
 
   for (const event of events) {
-    if (event.kind === "damage" && event.source) {
-      const entry = actors.get(event.source) ?? { damage: 0, maxHit: 0, healing: 0, hits: 0, crits: 0 };
-      entry.damage += event.amount;
-      entry.maxHit = Math.max(entry.maxHit, event.amount);
-      entry.hits += 1;
-      if (event.flag === "crit") entry.crits += 1;
-      actors.set(event.source, entry);
+    if (event.kind === "damage") {
       totalDamage += event.amount;
       if (event.target) taken.set(event.target, (taken.get(event.target) ?? 0) + event.amount);
+      if (event.source) {
+        const entry = actors.get(event.source) ?? { damage: 0, maxHit: 0, healing: 0, hits: 0, crits: 0 };
+        entry.damage += event.amount;
+        entry.maxHit = Math.max(entry.maxHit, event.amount);
+        entry.hits += 1;
+        if (event.flag === "crit") entry.crits += 1;
+        actors.set(event.source, entry);
+      }
     }
     if (event.kind === "heal" && event.source) {
       const entry = actors.get(event.source) ?? { damage: 0, maxHit: 0, healing: 0, hits: 0, crits: 0 };

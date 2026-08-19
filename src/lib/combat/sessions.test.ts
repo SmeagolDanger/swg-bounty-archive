@@ -59,4 +59,16 @@ describe("combat sessions", () => {
     expect(actors).toHaveLength(1);
     expect(actors[0]).toMatchObject({ name: "Beefy", damage: 2000 });
   });
+
+  it("keeps unresolvable self-DoT damage out of the player list", () => {
+    const events: CombatEventInput[] = [
+      { kind: "damage", source: "agony sharing", target: "You", ability: "agony sharing", amount: 500, flag: "periodic", occurredAt: at(0) },
+      damage(2, "Beefy", "a womp rat", 100),
+    ];
+    const sessions = buildSessions(events);
+    const encounter = sessions[0].encounters[0];
+    expect(encounter.totalDamage).toBe(600);
+    expect(encounter.actors.map((a) => a.name)).toEqual(["Beefy"]);
+    expect(sessions[0].topPlayer).toBe("Beefy");
+  });
 });

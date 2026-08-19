@@ -6,7 +6,7 @@
 // local HH:MM:SS stamp and NAMED actors — there is no "You" in this format —
 // so events are per-actor and the monitor works like a group meter.
 
-export const COMBAT_PARSER_VERSION = "1.0.0";
+export const COMBAT_PARSER_VERSION = "1.1.0";
 
 export type CombatLineEvent = {
   clock: number; // seconds since midnight, from the line's HH:MM:SS stamp
@@ -34,6 +34,12 @@ const RX_DEATH = /^(.+?)\s+is\s+no\s+more\./i;
 const RX_PERFORM = /^(.+?)\s+performs\s+(.+?)\.?\s*$/i;
 
 const RX_MISSES_PAREN = /^(.+?)\s+attacks\s+(.+?)(?:\s+(?:with|using)\s+.+?)?\s+(?:and\s+)?misses\s*\((dodge|parry|parries)\)\.?$/i;
+const RX_MISSES_BARE = /^(.+?)\s+attacks\s+(.+?)(?:\s+(?:with|using)\s+.+?)?\s+and\s+misses\.?\s*$/i;
+// Omega-specific damage-over-time and self-referential lines.
+const RX_DMG_TAKEN = /^(.+?)\s+has\s+taken\s+(\d+)\s+points\s+of\s+(?:([a-z]+)\s+)?damage/i;
+const RX_DMG_WRACKED = /^(.+?)\s+is\s+wracked\s+with\s+crippling\s+pain\s+for\s+(\d+)\s+points/i;
+const RX_DMG_AGONY = /^You\s+are\s+rent\s+by\s+agony\s+sharing\s+(\d+)\s+points/i;
+const RX_HEAL_YOU = /^You\s+have\s+healed\s+(.+?)\s+for\s+(\d+)\s+points/i;
 const RX_DODGE_PARRY_1 = /^(.+?)\s+attacks\s+(.+?)\s+(?:with|using)\s+.*?(?:,?\s+)?(?:but|and)\s+\2\s+(dodges|parries)\b/i;
 const RX_DODGE_PARRY_2 = /^(.+?)\s+attacks\s+(.+?)(?:\s+(?:but|and))\s+\2\s+(dodges|parries)\b/i;
 const RX_DODGE_PARRY_3 = /^(.+?)\s+(dodges|parries)\s+(.+?)'?s?\s+attack\b/i;
@@ -81,6 +87,9 @@ export function parseCombatLine(raw: string): CombatLineEvent | null {
     const flag = m[2].toLowerCase() === "dodged" ? "dodge" : "parry";
     return { clock, kind: "avoid", source: clean(m[1]), target: clean(m[3]), ability: "", amount: 0, flag };
   }
+  if ((m = RX_MISSES_BARE.exec(rest))) {
+    return { clock, kind: "avoid", source: clean(m[1]), target: clean(m[2]), ability: "", amount: 0, flag: "miss" };
+  }
 
   if ((m = RX_DMG_WITH.exec(rest))) {
     const amount = Number(m[6]);
@@ -107,6 +116,21 @@ export function parseCombatLine(raw: string): CombatLineEvent | null {
     const amount = Number(m[3]);
     if (amount > MAX_REALISTIC_HIT && !looksLikeNPC(m[1])) return null;
     return { clock, kind: "damage", source: clean(m[1]), target: clean(m[2]), ability: "Periodic", amount, flag: "periodic" };
+  }
+  if ((m = RX_DMG_TAKEN.exec(rest))) {
+    // Self-sourced DoT: ability doubles as the source so aggregation can
+    // re-credit the tick to whoever applied it.
+    const ability = clean(m[3]) || "Periodic";
+    return { clock, kind: "damage", source: ability, target: clean(m[1]), ability, amount: Number(m[2]), flag: "periodic" };
+  }
+  if ((m = RX_DMG_WRACKED.exec(rest))) {
+    return { clock, kind: "damage", source: "crippling pain", target: clean(m[1]), ability: "crippling pain", amount: Number(m[2]), flag: "periodic" };
+  }
+  if ((m = RX_DMG_AGONY.exec(rest))) {
+    return { clock, kind: "damage", source: "agony sharing", target: "You", ability: "agony sharing", amount: Number(m[1]), flag: "periodic" };
+  }
+  if ((m = RX_HEAL_YOU.exec(rest))) {
+    return { clock, kind: "heal", source: "You", target: clean(m[1]), ability: "", amount: Number(m[2]), flag: "" };
   }
   if ((m = RX_HEAL.exec(rest))) {
     return { clock, kind: "heal", source: clean(m[1]), target: clean(m[2]), ability: clean(m[4]), amount: Number(m[3]), flag: "" };

@@ -208,8 +208,10 @@ func tailFile(path string, offset int64) (int64, []string) {
 	return offset + int64(end+1), lines
 }
 
+// Keyed by file NAME (not full path) so the same character's log seen from
+// different machines or folders can never double-count.
 func lineFingerprint(path string, offset int64, index int, line string) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%s", path, offset, index, line)))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%s", shortName(path), offset, index, line)))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -259,13 +261,16 @@ func chatLoop(sink statusSink) {
 
 		for _, path := range files {
 			offset := state.Offsets[path]
-			// First sight of a file: skip its backlog — this is a live
-			// monitor, and old sessions would arrive with wrong dates.
+			// First sight of a file: import its whole backlog, dated by the
+			// "Logging In [...]" session markers, then tail live from there.
 			if _, tracked := state.Offsets[path]; !tracked {
-				if info, err := os.Stat(path); err == nil {
-					state.Offsets[path] = info.Size()
-					state.save()
+				sink.status(fmt.Sprintf("Importing combat history from %s…", shortName(path)))
+				end, done := importHistory(config, path, sink)
+				if !done {
+					continue // upload trouble; retried next cycle
 				}
+				state.Offsets[path] = end
+				state.save()
 				continue
 			}
 			newOffset, lines := tailFile(path, offset)

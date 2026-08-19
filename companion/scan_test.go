@@ -186,3 +186,76 @@ func TestDiscoverOmegaCharacterChatLogs(t *testing.T) {
 		t.Fatalf("expected the character chatlog by name, got %v", found)
 	}
 }
+
+func TestParseLoginMarker(t *testing.T) {
+	stamp, ok := parseLoginMarker("Logging In [Wed Feb 07 20:46:41 2024] ")
+	if !ok || stamp.Year() != 2024 || stamp.Month() != time.February || stamp.Day() != 7 || stamp.Hour() != 20 {
+		t.Fatalf("marker not parsed: %v %v", stamp, ok)
+	}
+	if _, ok := parseLoginMarker("[Combat]  18:34:38 RalphieJames attacks"); ok {
+		t.Error("combat line must not parse as login marker")
+	}
+	// BOM-prefixed first line of a real log.
+	if _, ok := parseLoginMarker("\uFEFFLogging In [Wed Feb 07 20:46:41 2024] "); !ok {
+		t.Error("BOM-prefixed marker must parse")
+	}
+}
+
+func TestImportDatingAnchors(t *testing.T) {
+	// Marker mid-file: combat BEFORE it must backfill to earlier days,
+	// combat after follows it, and a midnight wrap advances the day.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "999_chatlog.txt")
+	content := "\uFEFF[Chat]  22:39:54 Chat logging ON\r\n" +
+		"[Combat]  23:50:00 Beefy attacks a womp rat and hits for 10 points\r\n" +
+		"[Combat]  00:10:00 Beefy attacks a womp rat and hits for 11 points\r\n" + // wrapped: day -1 relative to marker
+		"Logging In [Wed Feb 07 20:46:41 2024] \r\n" +
+		"[Combat]  21:00:00 Beefy attacks a womp rat and hits for 12 points\r\n" +
+		"[Combat]  01:00:00 Beefy attacks a womp rat and hits for 13 points\r\n" // wrapped past marker's midnight
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var got []ChatEvent
+	captureUpload = func(events []ChatEvent) { got = append(got, events...) }
+	defer func() { captureUpload = nil }()
+	end, done := importHistory(Config{Server: "test://capture"}, path, statusLogger{})
+	if !done || end == 0 {
+		t.Fatalf("import did not complete: %v %v", end, done)
+	}
+	if len(got) != 4 {
+		t.Fatalf("expected 4 events, got %d", len(got))
+	}
+	day := func(at string) string { ts, _ := time.Parse(time.RFC3339, at); return ts.Format("2006-01-02 15:04") }
+	if day(got[0].At) != "2024-02-06 23:50" || day(got[1].At) != "2024-02-07 00:10" {
+		t.Errorf("pre-marker backfill wrong: %s %s", got[0].At, got[1].At)
+	}
+	if day(got[2].At) != "2024-02-07 21:00" || day(got[3].At) != "2024-02-08 01:00" {
+		t.Errorf("post-marker dating wrong: %s %s", got[2].At, got[3].At)
+	}
+}
+
+func TestImportDatingFromMtimeWithoutMarkers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "998_chatlog.txt")
+	content := "[Combat]  10:00:00 Beefy attacks a womp rat and hits for 10 points\r\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Date(2026, 8, 15, 22, 0, 0, 0, time.Local)
+	os.Chtimes(path, stamp, stamp)
+
+	var got []ChatEvent
+	captureUpload = func(events []ChatEvent) { got = append(got, events...) }
+	defer func() { captureUpload = nil }()
+	if _, done := importHistory(Config{Server: "test://capture"}, path, statusLogger{}); !done {
+		t.Fatal("import failed")
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(got))
+	}
+	ts, _ := time.Parse(time.RFC3339, got[0].At)
+	if ts.Format("2006-01-02 15:04") != "2026-08-15 10:00" {
+		t.Errorf("mtime anchoring wrong: %s", got[0].At)
+	}
+}
