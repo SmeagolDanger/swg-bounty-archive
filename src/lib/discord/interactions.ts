@@ -40,6 +40,7 @@ export interface Interaction {
 }
 
 export interface Embed {
+  author?: { name: string; url?: string; icon_url?: string };
   title?: string;
   url?: string;
   description?: string;

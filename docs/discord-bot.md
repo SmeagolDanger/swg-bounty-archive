@@ -23,6 +23,14 @@ serves at `POST /api/discord/interactions`:
    `getParticipant`, `searchEntities`); the bot is read-only and cannot change
    the archive.
 
+Tabular content (encounter rows, rivalry records, the dossier stat card) is
+rendered inside ```` ```ansi ```` code blocks with fixed-width columns and
+colour escapes, because embeds cannot otherwise align proportional text.
+Desktop clients show the colours (green claims, red failures, gold payouts);
+mobile shows the same aligned text in plain grey. Ages are compact fixed-width
+cells ("17m", "13h", "3d") computed at render time, so the message is a
+snapshot — Discord's own "Today at …" stamp on the message records when.
+
 Everything Discord-facing lives in `src/lib/discord/`: `interactions.ts`
 (transport), `embeds.ts` (pure formatting, fully unit-tested), `commands.ts`
 (definitions + dispatch, tested with injected data). Autocomplete answers

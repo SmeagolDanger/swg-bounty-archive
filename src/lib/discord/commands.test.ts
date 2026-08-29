@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_DEFINITIONS, type CommandDeps, handleInteraction } from "./commands";
-import type { DossierData, FeedRow } from "./embeds";
+import { type DossierData, type FeedRow, stripAnsi } from "./embeds";
 import { EPHEMERAL, type Interaction, InteractionResponseType, InteractionType } from "./interactions";
 
 const kill: FeedRow = { event_at: "2026-08-13T00:10:09Z", outcome: "KILL", hunter_name: "Bossk", target_name: "Eahi", credits: 29549 };
@@ -45,20 +45,20 @@ describe("slash command handling", () => {
     expect(result.immediate.type).toBe(InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
     const message = await result.deferred!();
     expect(d.getEncounters).toHaveBeenCalledWith({ q: "Bossk", outcome: "KILL", minCredits: 1000, page: 1, pageSize: 25 });
-    expect(message.embeds?.[0].title).toBe("Bounty feed · latest 1 encounter");
-    expect(message.embeds?.[0].description).toContain("**Bossk** claimed **Eahi**");
+    expect(message.embeds?.[0].title).toBe("Latest 1 encounter · “Bossk” · claims only · ≥ 1,000 cr");
+    expect(stripAnsi(message.embeds?.[0].description ?? "")).toMatch(/◆ Bossk +▸ Eahi +29,549/);
   });
 
   it("clamps /feed count into 1–15", async () => {
     const rows = Array.from({ length: 25 }, (_, i) => ({ ...kill, target_name: `T${i}` }));
     const d = deps({ getEncounters: vi.fn(async () => ({ rows, total: 25 })) });
     const message = await (await handleInteraction(command("feed", [{ name: "count", value: 99 }]), d)).deferred!();
-    expect(message.embeds?.[0].description?.split("\n")).toHaveLength(15);
+    expect(stripAnsi(message.embeds?.[0].description ?? "").split("\n").filter((line) => /^ *\S+ ◆ /.test(line))).toHaveLength(15);
   });
 
   it("resolves /hunter from an autocomplete id", async () => {
     const message = await (await handleInteraction(command("hunter", [{ name: "name", value: dossier.participant.id }]), deps())).deferred!();
-    expect(message.embeds?.[0].title).toBe("Bossk · Hunter dossier");
+    expect(message.embeds?.[0].title).toBe("Bossk");
   });
 
   it("resolves /hunter from a typed name via exact case-insensitive match", async () => {
@@ -71,7 +71,7 @@ describe("slash command handling", () => {
   it("falls back to an encounter-derived dossier for hunters missing from the boards", async () => {
     const d = deps({ searchEntities: vi.fn(async () => []) });
     const message = await (await handleInteraction(command("hunter", [{ name: "name", value: "eahi" }]), d)).deferred!();
-    expect(message.embeds?.[0].title).toBe("Eahi · Hunter dossier");
+    expect(message.embeds?.[0].title).toBe("Eahi");
     expect(message.embeds?.[0].description).toMatch(/derived from the encounter archive/);
   });
 

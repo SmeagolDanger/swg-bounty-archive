@@ -109,7 +109,7 @@ async function feedCommand(options: Map<string, InteractionOption>, deps: Comman
     pageSize: 25,
   };
   const result = await deps.getEncounters(filters);
-  return { embeds: [feedEmbed(result.rows.slice(0, count), { filters, total: result.total, siteUrl: deps.siteUrl })] };
+  return { embeds: [feedEmbed(result.rows.slice(0, count), { filters, total: result.total, siteUrl: deps.siteUrl, now: deps.now?.() })] };
 }
 
 async function hunterCommand(raw: string, deps: CommandDeps): Promise<MessageBody> {
@@ -134,7 +134,7 @@ async function hunterCommand(raw: string, deps: CommandDeps): Promise<MessageBod
   const exactRows = encounters.rows.filter((row) => row.hunter_name.toLowerCase() === name.toLowerCase() || row.target_name.toLowerCase() === name.toLowerCase());
   if (exactRows.length) {
     const canonical = exactRows[0].hunter_name.toLowerCase() === name.toLowerCase() ? exactRows[0].hunter_name : exactRows[0].target_name;
-    return { embeds: [hunterLiteEmbed(canonical, exactRows, { siteUrl: deps.siteUrl })] };
+    return { embeds: [hunterLiteEmbed(canonical, exactRows, { siteUrl: deps.siteUrl, now: deps.now?.() })] };
   }
   return { embeds: [notFoundEmbed(name, suggestions)] };
 }
