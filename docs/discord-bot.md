@@ -65,9 +65,13 @@ Uses the same Discord application as [account sign-in](accounts.md).
 
    Global commands can take up to an hour to appear; for instant results while
    testing, register to one server with `-- --guild <server id>`.
-6. Invite the bot: **OAuth2 → URL Generator**, scope `applications.commands`
-   (add `bot` with no permissions if you also want it listed as a member),
-   open the generated URL, pick the server.
+6. Install it. Under **Installation**, enable **Guild Install** and/or
+   **User Install** with the `applications.commands` scope (add `bot` with no
+   permissions to the guild install only if you want it listed as a member).
+   Then either open the install link and pick a server, or install it to
+   your own account — the commands are registered for both, and a
+   user-installed app can run `/feed` and `/hunter` in any server, DM, or
+   group without the server adding the app.
 
 Re-run step 5 whenever `COMMAND_DEFINITIONS` in `src/lib/discord/commands.ts`
 changes.

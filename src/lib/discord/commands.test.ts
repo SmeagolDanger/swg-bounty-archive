@@ -98,7 +98,11 @@ describe("slash command handling", () => {
     expect((result.immediate.data as { choices: Array<{ name: string }> }).choices.map((c) => c.name)).toEqual(["Lucey Butler", "Bosslucy", "Apestosa"]);
   });
 
-  it("registers exactly the commands it handles", () => {
+  it("registers exactly the commands it handles, installable to servers and users alike", () => {
     expect(COMMAND_DEFINITIONS.map((c) => c.name).sort()).toEqual(["feed", "hunter"]);
+    for (const command of COMMAND_DEFINITIONS) {
+      expect(command.integration_types).toEqual([0, 1]);
+      expect(command.contexts).toEqual([0, 1, 2]);
+    }
   });
 });

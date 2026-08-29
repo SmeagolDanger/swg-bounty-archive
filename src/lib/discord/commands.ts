@@ -12,8 +12,15 @@ import {
 
 const STRING = 3, INTEGER = 4;
 
+// Installable both to a server (0) and to a user account (1), and usable in
+// guilds (0), bot DMs (1), and group/private channels (2). Without these,
+// Discord registers commands as guild-install only and a user-installed app
+// shows no commands at all.
+const INSTALL_ANYWHERE = { integration_types: [0, 1], contexts: [0, 1, 2] };
+
 export const COMMAND_DEFINITIONS = [
   {
+    ...INSTALL_ANYWHERE,
     name: "feed",
     description: "Latest bounty encounters from the Outer Rim Ledger archive",
     options: [
@@ -24,6 +31,7 @@ export const COMMAND_DEFINITIONS = [
     ],
   },
   {
+    ...INSTALL_ANYWHERE,
     name: "hunter",
     description: "Hunter dossier: record, boards, rivalries, and recent encounters",
     options: [
