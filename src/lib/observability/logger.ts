@@ -19,7 +19,10 @@ export type ObservabilityEvent =
   | "worker_started"
   | "worker_stopped"
   | "discord_report_posted"
-  | "discord_report_failed";
+  | "discord_report_failed"
+  | "discord_interaction_answered"
+  | "discord_interaction_failed"
+  | "discord_interaction_rejected";
 
 export type LogContext = Record<string, unknown>;
 

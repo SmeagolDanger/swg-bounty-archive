@@ -21,6 +21,7 @@
     "ingest:validate": "tsx scripts/validate-data.ts",
     "worker": "tsx scripts/worker.ts",
     "admin:hash-password": "tsx scripts/hash-password.ts",
+    "discord:register": "tsx scripts/discord-register-commands.ts",
     "backup": "bash backups/backup.sh",
     "restore": "bash backups/restore.sh",
     "backup:verify": "bash backups/verify.sh"

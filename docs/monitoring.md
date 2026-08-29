@@ -292,7 +292,7 @@ After enough history exists, add anomaly monitors for unusually high `duplicate_
 
 ## Discord notifier
 
-Axiom supports [Discord notifiers](https://axiom.co/docs/monitor-data/discord-notifier) directly; no custom bot belongs in this repository.
+Axiom supports [Discord notifiers](https://axiom.co/docs/monitor-data/discord-notifier) directly; no custom alerting bot belongs in this repository (the slash-command bot in [discord-bot.md](discord-bot.md) is a separate, read-only feature).
 
 1. In Discord, open the target channel's settings, choose **Integrations → Webhooks → New Webhook**, select the channel, and copy the webhook URL.
 2. In Axiom, open **Monitors → Manage notifiers → New notifier**.
