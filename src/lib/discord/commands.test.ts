@@ -45,15 +45,15 @@ describe("slash command handling", () => {
     expect(result.immediate.type).toBe(InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
     const message = await result.deferred!();
     expect(d.getEncounters).toHaveBeenCalledWith({ q: "Bossk", outcome: "KILL", minCredits: 1000, page: 1, pageSize: 25 });
-    expect(message.embeds?.[0].title).toBe("Latest 1 encounter · “Bossk” · claims only · ≥ 1,000 cr");
-    expect(stripAnsi(message.embeds?.[0].description ?? "")).toMatch(/◆ Bossk +▸ Eahi +29,549/);
+    expect(message.embeds?.[0].title).toBe("📡 Live feed · last 1 contract · “Bossk” · collected only · ≥ 1,000 cr");
+    expect(stripAnsi(message.embeds?.[0].description ?? "")).toMatch(/Bossk +COLLECTED +Eahi +29,549/);
   });
 
   it("clamps /feed count into 1–15", async () => {
     const rows = Array.from({ length: 25 }, (_, i) => ({ ...kill, target_name: `T${i}` }));
     const d = deps({ getEncounters: vi.fn(async () => ({ rows, total: 25 })) });
     const message = await (await handleInteraction(command("feed", [{ name: "count", value: 99 }]), d)).deferred!();
-    expect(stripAnsi(message.embeds?.[0].description ?? "").split("\n").filter((line) => /^ *\S+ ◆ /.test(line))).toHaveLength(15);
+    expect(stripAnsi(message.embeds?.[0].description ?? "").split("\n").filter((line) => /^\d\d:\d\d  /.test(line))).toHaveLength(15);
   });
 
   it("resolves /hunter from an autocomplete id", async () => {
@@ -72,13 +72,13 @@ describe("slash command handling", () => {
     const d = deps({ searchEntities: vi.fn(async () => []) });
     const message = await (await handleInteraction(command("hunter", [{ name: "name", value: "eahi" }]), d)).deferred!();
     expect(message.embeds?.[0].title).toBe("Eahi");
-    expect(message.embeds?.[0].description).toMatch(/derived from the encounter archive/);
+    expect(message.embeds?.[0].description).toMatch(/Off the boards/);
   });
 
   it("suggests near matches when nothing fits", async () => {
     const d = deps({ getEncounters: vi.fn(async () => ({ rows: [], total: 0 })) });
     const message = await (await handleInteraction(command("hunter", [{ name: "name", value: "Bo" }]), d)).deferred!();
-    expect(message.embeds?.[0].title).toBe("No hunter found");
+    expect(message.embeds?.[0].title).toBe("No such hunter on file");
     expect(message.embeds?.[0].description).toContain("**Bossk**, **Boba**");
   });
 

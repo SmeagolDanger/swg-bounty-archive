@@ -4,8 +4,8 @@ Two slash commands bring the archive into Discord:
 
 | Command | Output |
 | --- | --- |
-| `/feed [count] [hunter] [outcome] [min_credits]` | The latest encounters (default 10, max 15) as one embed: claim/failure, payout, and a relative timestamp rendered in each reader's local time. Filters mirror the `/encounters` page and the embed title links to the same filtered view. |
-| `/hunter <name>` | A hunter dossier: identity (guild, city, planet), hunter record (W/L, claim rate, credits, average and best bounty), record as a target, current-cycle board ranks, top rivalries with revenge kills, and the five most recent encounters. `name` autocompletes from the participant directory; hunters seen only in the encounter log still get an archive-derived record. |
+| `/feed [count] [hunter] [outcome] [min_credits]` | The bounty board as the website shows it: a `UTC · Hunter · COLLECTED/FAILED · Target · Payout` table of the latest contracts (default 10, max 15) under a one-line tally (collected, got away, credits paid out, date span). Filters mirror the `/encounters` page and the title links to the same filtered view. |
+| `/hunter <name>` | A guild dossier for one character: faction rank and profession (from the Officers' Salute registry when enrolled), guild and home city, a K/D reputation grade, and a **Kill / Death record** card — kills, deaths, K/D, claim rate, credits — for the current cycle and all time, using the site's definition of deaths (failed contracts plus times killed while targeted). Highlights (biggest payday, unique marks, survival when hunted), this week's board ranks with podium medals, and a single nemesis. `name` autocompletes from the participant directory; hunters seen only in the encounter log get a K/D card from their encounter stats. |
 
 ## How it works
 
