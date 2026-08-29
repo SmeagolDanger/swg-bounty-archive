@@ -21,11 +21,21 @@ const url = guildId
   ? `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildId}/commands`
   : `https://discord.com/api/v10/applications/${applicationId}/commands`;
 
+const headers = { Authorization: `Bot ${botToken}`, "Content-Type": "application/json" };
+
+// Apps with Activities enabled own an Entry Point command (type 4) that a
+// bulk overwrite must carry through, or Discord rejects the whole request.
+const PRIMARY_ENTRY_POINT = 4;
+const existingResponse = await fetch(url, { headers });
+if (!existingResponse.ok) throw new Error(`Discord returned HTTP ${existingResponse.status} listing commands: ${await existingResponse.text()}`);
+const existing = await existingResponse.json() as Array<Record<string, unknown> & { type?: number; name: string }>;
+const entryPoints = existing.filter((command) => command.type === PRIMARY_ENTRY_POINT);
+
 const response = await fetch(url, {
   method: "PUT",
-  headers: { Authorization: `Bot ${botToken}`, "Content-Type": "application/json" },
-  body: JSON.stringify(COMMAND_DEFINITIONS),
+  headers,
+  body: JSON.stringify([...entryPoints, ...COMMAND_DEFINITIONS]),
 });
 if (!response.ok) throw new Error(`Discord returned HTTP ${response.status}: ${await response.text()}`);
 const registered = await response.json() as Array<{ name: string }>;
-process.stdout.write(`Registered ${registered.map((c) => `/${c.name}`).join(", ")} ${guildId ? `for guild ${guildId}` : "globally"}\n`);
+process.stdout.write(`Registered ${registered.map((c) => `/${c.name}`).join(", ")} ${guildId ? `for guild ${guildId}` : "globally"}${entryPoints.length ? ` (kept ${entryPoints.length} Activity entry point)` : ""}\n`);
