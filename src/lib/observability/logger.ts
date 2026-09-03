@@ -22,7 +22,8 @@ export type ObservabilityEvent =
   | "discord_report_failed"
   | "discord_interaction_answered"
   | "discord_interaction_failed"
-  | "discord_interaction_rejected";
+  | "discord_interaction_rejected"
+  | "overlay_image_failed";
 
 export type LogContext = Record<string, unknown>;
 

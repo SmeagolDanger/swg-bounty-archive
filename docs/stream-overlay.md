@@ -38,6 +38,26 @@ Example:
   (contracts attempted in the current leaderboard cycle), **Best payout**
   (largest archived claim).
 
+## Dynamic PNG
+
+The same panel is also served as a **dynamically rendered image**:
+
+```
+GET /api/overlay/image?name=ChickenRat&rows=4
+```
+
+Headless Chromium (already in the container for the weekly Discord card)
+loads `/overlay` against localhost, waits for the archive data, and
+screenshots the panel with a transparent background. Same options as the
+page; `scale` changes the output resolution. Renders are cached ~30 s and
+deduplicated per parameter set, and the endpoint is rate-limited like the
+rest of the public API. Use it for Discord embeds, stream widgets that only
+take image URLs, or anywhere the HTML page can't run — for OBS itself the
+Browser source above stays the better choice (ticking times, no re-render).
+
+`OVERLAY_RENDER_BASE_URL` overrides where Chromium fetches the page
+(default `http://127.0.0.1:3000`, the app itself inside the container).
+
 ## How it works
 
 `src/app/overlay/page.tsx` hides the site chrome and paints only the panel;

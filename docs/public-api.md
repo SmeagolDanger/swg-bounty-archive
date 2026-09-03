@@ -27,6 +27,7 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 | `GET /api/raw-data/{id}` | One archived source response with its exact original payload |
 | `GET /api/dashboard` | Aggregate snapshot: totals, recent activity, top boards |
 | `GET /api/reports/weekly` | Exact-cycle report with all selectable `availableCycles`; pass a returned `starts_at` as the ISO `cycle` parameter to retrieve any archived week |
+| `GET /api/overlay/image` | Bounty HUD overlay panel rendered server-side as a transparent PNG (`name`, `rows`, `title`, `avatar`, `scale`) — see [stream-overlay.md](stream-overlay.md) |
 | `GET /api/health` | Liveness of web, database, and collector (503 while degraded) |
 
 Parameter tables, defaults, and worked examples for each endpoint are documented at `/api-docs` on the running site.

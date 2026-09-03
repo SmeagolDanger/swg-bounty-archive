@@ -70,7 +70,9 @@ export function BountyOverlay({ name, rows: rowCount, refresh, avatar, title }: 
   const stats = dossier ? overlayStats(dossier, now) : null;
   const displayName = dossier?.participant.current_name ?? name;
 
-  return <div className="bounty-overlay" data-overlay-root>
+  // data-overlay-ready lets the server-side PNG renderer (/api/overlay/image)
+  // wait until the archive has answered before screenshotting.
+  return <div className="bounty-overlay" data-overlay-root data-overlay-ready={dossier || error ? "" : undefined}>
     <div className="panel-frame">
       <header className="panel-head">
         <div className={`portrait${avatar ? "" : " portrait--emblem"}`}>
