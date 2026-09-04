@@ -7,7 +7,8 @@ import type { OverlayPeriod } from "@/lib/overlay/model";
 // with a transparent background; the panel polls the public API and keeps
 // itself current. Options: period (recent | today | cycle), rows (1-100,
 // default: 4 for recent, the full window for today/cycle), tz (IANA zone for
-// the 'today' boundary; defaults to the viewer's browser), refresh, title, avatar
+// the 'today' boundary; default America/New_York — the game server's day),
+// refresh, title, avatar
 // (image URL for the portrait), scale. today/cycle show that full window.
 //
 // The site chrome is hidden and the body made transparent by the styles
@@ -152,9 +153,11 @@ export default async function OverlayPage({ searchParams }: { searchParams: Prom
   const scale = Math.max(0.4, Math.min(3, Number(one(query.scale)) || 1));
   const avatar = one(query.avatar)?.slice(0, 500);
   const title = (one(query.title) ?? titles[period]).slice(0, 40);
+  // "Today" follows the game server's day (SWG Legends: US Eastern) unless a
+  // zone is given explicitly.
   const tzRaw = one(query.tz)?.slice(0, 64);
-  let tz: string | undefined;
-  try { if (tzRaw) { new Intl.DateTimeFormat("en", { timeZone: tzRaw }); tz = tzRaw; } } catch { /* unknown zone falls back to browser-local */ }
+  let tz = "America/New_York";
+  try { if (tzRaw) { new Intl.DateTimeFormat("en", { timeZone: tzRaw }); tz = tzRaw; } } catch { /* unknown zone keeps the server day */ }
 
   return <>
     <style dangerouslySetInnerHTML={{ __html: css }} />

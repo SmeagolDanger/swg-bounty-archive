@@ -19,17 +19,19 @@ export interface OverlayImageParams {
   scale: number;
 }
 
+// SWG Legends runs on US Eastern time; its "day" is the natural default.
+export const GAME_TZ = "America/New_York";
 const validTimeZone = (value: string | undefined): string => {
-  if (!value) return "UTC";
-  try { new Intl.DateTimeFormat("en", { timeZone: value }); return value; } catch { return "UTC"; }
+  if (!value) return GAME_TZ;
+  try { new Intl.DateTimeFormat("en", { timeZone: value }); return value; } catch { return GAME_TZ; }
 };
 
 export function clampOverlayParams(input: { name: string; period?: string; tz?: string; rows?: number; title?: string; avatar?: string; scale?: number }): OverlayImageParams {
   return {
     name: input.name.trim().slice(0, 100),
     period: input.period === "today" || input.period === "cycle" ? input.period : "recent",
-    // The server renders in a UTC container; without an explicit zone the
-    // "today" boundary would be UTC midnight regardless of the streamer.
+    // The render container runs on UTC; without an explicit zone the "today"
+    // boundary would be UTC midnight instead of the game server's day.
     tz: validTimeZone(input.tz),
     rows: input.rows === undefined ? undefined : Math.max(1, Math.min(100, Math.floor(input.rows) || 4)),
     title: input.title?.slice(0, 40) || undefined,

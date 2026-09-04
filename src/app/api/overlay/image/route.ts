@@ -9,8 +9,8 @@ import { rateLimited } from "@/lib/rate-limit";
 //   GET /api/overlay/image?name=ChickenRat&rows=4
 // Same options as /overlay (name, period, rows, title, avatar, scale);
 // period "today" and "cycle" render that full window, and tz sets the IANA
-// zone for the "today" boundary (default UTC; pass e.g. tz=America/Halifax
-// to get YOUR day, matching what your browser shows). Renders are cached
+// zone for the "today" boundary (default America/New_York — the SWG Legends
+// server day; pass your own zone for your local day). Renders are cached
 // ~30 s per parameter set.
 
 export const dynamic = "force-dynamic";

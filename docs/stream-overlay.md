@@ -4,6 +4,15 @@
 by the public JSON API, on a fully transparent page — made to be an OBS
 **Browser** source composited over gameplay.
 
+## Overlay studio
+
+**`/overlay/builder`** on the site is the point-and-click way to do all of
+this: hunter autocomplete from the archive, window/rows/title/portrait/scale
+controls, a live transparent preview, copy buttons for both URLs, and a
+"Generate image" button that renders the PNG server-side (with a progress
+spinner — renders take a few seconds) and offers it for download. Linked from
+the site footer.
+
 ## Setup
 
 1. In OBS: **Sources → + → Browser**.
@@ -20,7 +29,7 @@ The panel refreshes itself from the archive; no OBS refresh needed.
 | --- | --- | --- |
 | `name` | required | Hunter name (case-insensitive; resolved via archive search) |
 | `period` | recent | `recent` (rolling last contracts), `today` (the viewer-local day in full), or `cycle` (this leaderboard week in full) — today/cycle show the FULL window with day/cycle totals in the footer |
-| `tz` | browser / UTC | IANA zone for the `today` boundary. The page defaults to the viewer’s browser zone; the PNG endpoint renders on the server (UTC), so pass `tz=America/Halifax`-style to get your own day |
+| `tz` | America/New_York | IANA zone for the `today` boundary. Defaults to the SWG Legends server day (US Eastern) on both the page and the PNG endpoint; pass your own zone to use your local day |
 | `rows` | 4 / all | Row limit, 1–100. Default: 4 for recent; today/cycle show everything in the window (a “… n more” remainder appears only when rows cuts them) |
 | `refresh` | 30 | Poll interval in seconds (min 10; API responses are cached ~30 s) |
 | `title` | Recent bounties | The red `// …` subtitle |

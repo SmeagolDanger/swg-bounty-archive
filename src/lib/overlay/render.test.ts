@@ -3,13 +3,14 @@ import { clampOverlayParams, overlayCacheKey, overlayPageUrl } from "./render";
 
 describe("overlay image parameters", () => {
   it("clamps rows and scale, defaults the period, and trims the rest", () => {
-    expect(clampOverlayParams({ name: "  ChickenRat  ", rows: 999, scale: 9 })).toEqual({ name: "ChickenRat", period: "recent", tz: "UTC", rows: 100, title: undefined, avatar: undefined, scale: 3 });
-    expect(clampOverlayParams({ name: "x", rows: 0, scale: 0.1 })).toEqual({ name: "x", period: "recent", tz: "UTC", rows: 4, title: undefined, avatar: undefined, scale: 0.4 });
+    expect(clampOverlayParams({ name: "  ChickenRat  ", rows: 999, scale: 9 })).toEqual({ name: "ChickenRat", period: "recent", tz: "America/New_York", rows: 100, title: undefined, avatar: undefined, scale: 3 });
+    expect(clampOverlayParams({ name: "x", rows: 0, scale: 0.1 })).toEqual({ name: "x", period: "recent", tz: "America/New_York", rows: 4, title: undefined, avatar: undefined, scale: 0.4 });
     expect(clampOverlayParams({ name: "x", period: "today" }).period).toBe("today");
     expect(clampOverlayParams({ name: "x", period: "bogus" }).period).toBe("recent");
     expect(clampOverlayParams({ name: "x" }).rows).toBeUndefined();
     expect(clampOverlayParams({ name: "x", tz: "America/Halifax" }).tz).toBe("America/Halifax");
-    expect(clampOverlayParams({ name: "x", tz: "Not/AZone" }).tz).toBe("UTC");
+    expect(clampOverlayParams({ name: "x", tz: "Not/AZone" }).tz).toBe("America/New_York");
+    expect(clampOverlayParams({ name: "x" }).tz).toBe("America/New_York");
   });
   it("builds the page URL with only the provided options", () => {
     expect(overlayPageUrl("http://127.0.0.1:3000/", clampOverlayParams({ name: "Chicken Rat", rows: 4 })))
