@@ -6,7 +6,7 @@ import { OverlayStudio } from "@/components/overlay-studio";
 // normal site chrome; only the preview iframe is chrome-less.
 
 export const metadata: Metadata = {
-  title: "Overlay studio",
+  title: "Image studio",
   description: "Build the Outer Rim Ledger stream overlay: live preview, OBS URL, and server-rendered PNG.",
 };
 
@@ -59,7 +59,7 @@ export default function OverlayBuilderPage() {
     <style dangerouslySetInnerHTML={{ __html: css }}/>
     <header className="page-head">
       <span className="eyebrow">{"// Stream tools"}</span>
-      <h1>Overlay studio</h1>
+      <h1>Image studio</h1>
       <p>Build the bounty HUD for your stream: a transparent OBS browser source that keeps itself current, or a server-rendered PNG for anything that only takes an image URL. Times on the live overlay tick between polls; images are rendered on demand.</p>
     </header>
     <OverlayStudio/>

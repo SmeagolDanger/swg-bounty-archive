@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="site-footer">
           <div className="shell footer-grid">
             <div><span className="eyebrow">Independent archive</span><p>Public data originates from SWG Legends. This project is not affiliated with or operated by SWG Legends.</p></div>
-            <div className="footer-links"><a href="/api-docs">Public API</a><a href="/overlay/builder">Overlay studio</a><a href="/admin/ingestion">Ingestion health</a><a href="https://swglegends.com/game/leaderboards" rel="noreferrer">Source leaderboards ↗</a></div>
+            <div className="footer-links"><a href="/api-docs">Public API</a><a href="/overlay/builder">Image studio</a><a href="/admin/ingestion">Ingestion health</a><a href="https://swglegends.com/game/leaderboards" rel="noreferrer">Source leaderboards ↗</a></div>
           </div>
         </footer>
       </body>
