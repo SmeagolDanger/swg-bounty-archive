@@ -4,7 +4,7 @@
 by the public JSON API, on a fully transparent page — made to be an OBS
 **Browser** source composited over gameplay.
 
-## Image studio
+## Image Studio
 
 **`/overlay/builder`** on the site is the point-and-click way to do all of
 this: hunter autocomplete from the archive, window/rows/title/portrait/scale
