@@ -19,7 +19,8 @@ The panel refreshes itself from the archive; no OBS refresh needed.
 | Param | Default | Meaning |
 | --- | --- | --- |
 | `name` | required | Hunter name (case-insensitive; resolved via archive search) |
-| `rows` | 4 | Encounter rows, 1–10 |
+| `period` | recent | `recent` (rolling last contracts), `today` (the viewer-local day in full), or `cycle` (this leaderboard week in full) — today/cycle get day/cycle totals in the footer and a “… n more” remainder |
+| `rows` | 4 / 10 | Encounter rows, 1–20 (default 4 for recent, 10 for today/cycle) |
 | `refresh` | 30 | Poll interval in seconds (min 10; API responses are cached ~30 s) |
 | `title` | Recent bounties | The red `// …` subtitle |
 | `avatar` | — | Image URL for the circular portrait (defaults to a skull emblem) |
@@ -44,6 +45,8 @@ The same panel is also served as a **dynamically rendered image**:
 
 ```
 GET /api/overlay/image?name=ChickenRat&rows=4
+GET /api/overlay/image?name=ChickenRat&period=today
+GET /api/overlay/image?name=ChickenRat&period=cycle
 ```
 
 Headless Chromium (already in the container for the weekly Discord card)

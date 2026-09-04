@@ -6,14 +6,16 @@ import { rateLimited } from "@/lib/rate-limit";
 // The bounty HUD panel as a dynamically rendered transparent PNG — for
 // Discord embeds, stream widgets, or anywhere the HTML overlay can't run:
 //   GET /api/overlay/image?name=ChickenRat&rows=4
-// Same options as /overlay (name, rows, title, avatar, scale). Renders are
-// cached ~30 s per parameter set.
+// Same options as /overlay (name, period, rows, title, avatar, scale);
+// period "today" and "cycle" render that full window. Renders are cached
+// ~30 s per parameter set.
 
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
   name: z.string().trim().min(1).max(100),
-  rows: z.coerce.number().int().min(1).max(10).optional(),
+  period: z.enum(["recent", "today", "cycle"]).optional(),
+  rows: z.coerce.number().int().min(1).max(20).optional(),
   title: z.string().max(40).optional(),
   avatar: z.url().max(500).optional(),
   scale: z.coerce.number().min(0.4).max(3).optional(),

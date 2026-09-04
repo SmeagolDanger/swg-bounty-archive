@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { BountyOverlay } from "@/components/bounty-overlay";
+import type { OverlayPeriod } from "@/lib/overlay/model";
 
 // OBS browser-source overlay. Add a Browser source in OBS pointing at
 //   https://jawatracks.com/overlay?name=YourHunter
 // with a transparent background; the panel polls the public API and keeps
-// itself current. Options: rows (1-10), refresh (seconds), title, avatar
-// (image URL for the portrait), scale.
+// itself current. Options: period (recent | today | cycle), rows (1-20),
+// refresh (seconds), title, avatar
+// (image URL for the portrait), scale. today/cycle show that full window.
 //
 // The site chrome is hidden and the body made transparent by the styles
 // below — everything outside the panel composites over gameplay.
@@ -81,7 +83,8 @@ const css = `
   .headline { min-width: 0; }
   .headline h1 {
     margin: 0; font-size: 3.4rem; line-height: 1; font-weight: 700;
-    color: #f2f6ff; text-shadow: 0 2px 0 #000, 0 0 1.8rem #3fd6ff33;
+    color: #ff3540;
+    text-shadow: 0 2px 0 #45060b, 0 0 0.9rem #ff1e2e59, 0 0 2.4rem #ff1e2e38;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .subtitle { margin-top: 0.35rem; font-size: 1.55rem; font-weight: 700; color: var(--hud-signal); text-shadow: 0 1px 0 #000, 0 0 1rem #3fd6ff55; }
@@ -124,13 +127,13 @@ const css = `
 
   .panel-foot {
     margin-top: 1rem; border: 1px solid var(--hud-line); background: #060a1266;
-    display: grid; grid-template-columns: 1fr 1fr 1.2fr; align-items: center;
+    display: grid; grid-template-columns: 0.95fr 0.8fr 1.1fr 1.1fr; align-items: center;
   }
-  .panel-foot > div { display: flex; align-items: center; gap: 0.6rem; padding: 0.8rem 1rem; border-right: 1px solid var(--hud-line); font-size: 0.95rem; }
+  .panel-foot > div { display: flex; align-items: center; gap: 0.5rem; padding: 0.8rem 0.8rem; border-right: 1px solid var(--hud-line); font-size: 0.85rem; white-space: nowrap; }
   .panel-foot > div:last-child { border-right: 0; }
-  .panel-foot svg { width: 1.4rem; height: 1.4rem; color: var(--hud-signal); flex: none; opacity: 0.9; }
+  .panel-foot svg { width: 1.25rem; height: 1.25rem; color: var(--hud-signal); flex: none; opacity: 0.9; }
   .panel-foot span { color: var(--hud-dim); letter-spacing: 0.12em; }
-  .panel-foot b { font-size: 1.25rem; font-weight: 700; }
+  .panel-foot b { font-size: 1.1rem; font-weight: 700; }
   .tone-good { color: var(--hud-green); }
   .tone-gold { color: var(--hud-gold); }
 `;
@@ -138,17 +141,24 @@ const css = `
 export default async function OverlayPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
   const name = one(query.name)?.trim().slice(0, 100);
-  const rows = Math.max(1, Math.min(10, Number(one(query.rows)) || 4));
+  const periodRaw = one(query.period);
+  const period: OverlayPeriod = periodRaw === "today" || periodRaw === "cycle" ? periodRaw : "recent";
+  const defaults: Record<OverlayPeriod, { rows: number; title: string }> = {
+    recent: { rows: 4, title: "Recent bounties" },
+    today: { rows: 10, title: "Today's ledger" },
+    cycle: { rows: 10, title: "Cycle report" },
+  };
+  const rows = Math.max(1, Math.min(20, Number(one(query.rows)) || defaults[period].rows));
   const refresh = Math.max(10, Math.min(600, Number(one(query.refresh)) || 30));
   const scale = Math.max(0.4, Math.min(3, Number(one(query.scale)) || 1));
   const avatar = one(query.avatar)?.slice(0, 500);
-  const title = (one(query.title) ?? "Recent bounties").slice(0, 40);
+  const title = (one(query.title) ?? defaults[period].title).slice(0, 40);
 
   return <>
     <style dangerouslySetInnerHTML={{ __html: css }} />
     <div style={{ ["--overlay-scale" as never]: String(scale) }}>
       {name
-        ? <BountyOverlay name={name} rows={rows} refresh={refresh} avatar={avatar} title={title} />
+        ? <BountyOverlay name={name} rows={rows} refresh={refresh} avatar={avatar} title={title} period={period} />
         : <div className="bounty-overlay"><div className="panel-frame"><div className="board-note" style={{ padding: "1rem" }}>
             Add ?name=YourHunter to the URL — e.g. /overlay?name=ChickenRat&rows=4
           </div></div></div>}

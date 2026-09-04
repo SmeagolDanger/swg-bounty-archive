@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCredits, overlayRows, overlayStats, relativeAge, resultFor, type OverlayDossier } from "./model";
+import { formatCredits, overlayRows, overlayStats, overlayView, relativeAge, resultFor, type OverlayDossier } from "./model";
 
 const now = new Date("2026-09-03T18:00:00");
 const at = (iso: string) => new Date(iso).toISOString();
@@ -8,7 +8,7 @@ const dossier: OverlayDossier = {
   participant: { id: "p1", current_name: "ChickenRat" },
   encounters: [
     { id: "a", event_at: at("2026-09-03T17:53:00"), outcome: "KILL", hunter_name: "ChickenRat", target_name: "Mahi", credits: 125000,
-      hunter_stats: { cycle_encounters: 12, cycle_kills: 7, cycle_credits: 900000 } },
+      hunter_stats: { cycle_starts_at: at("2026-09-02T00:00:00"), cycle_ends_at: at("2026-09-09T00:00:00"), cycle_encounters: 12, cycle_kills: 7, cycle_credits: 900000 } },
     { id: "b", event_at: at("2026-09-03T17:38:00"), outcome: "FAILED", hunter_name: "ChickenRat", target_name: "Dex", credits: 0 },
     { id: "c", event_at: at("2026-09-03T17:26:00"), outcome: "KILL", hunter_name: "chickenrat", target_name: "Avolo", credits: 190000 },
     { id: "d", event_at: at("2026-09-03T17:00:00"), outcome: "FAILED", hunter_name: "Serverside", target_name: "ChickenRat", credits: 96000 },
@@ -52,12 +52,16 @@ describe("rows", () => {
 });
 
 describe("footer stats", () => {
-  it("counts today's claims (hunter role, local day), cycle contracts, and best payout", () => {
-    expect(overlayStats(dossier, now)).toEqual({ todayClaimed: 2, cycleContracts: 12, bestPayout: "190,000" });
+  it("counts today's claims, cycle contracts, the best claim of this cycle, and the record", () => {
+    expect(overlayStats(dossier, now)).toEqual({ todayClaimed: 2, cycleContracts: 12, cycleBest: "190,000", recordBest: "190,000" });
+  });
+  it("keeps pre-cycle claims out of the cycle best", () => {
+    const early = { ...dossier, encounters: [dossier.encounters[0], { ...dossier.encounters[2], event_at: at("2026-09-01T12:00:00") }] };
+    expect(overlayStats(early, now).cycleBest).toBe("125,000");
   });
   it("degrades gracefully without stats or summary", () => {
     const bare: OverlayDossier = { participant: { id: "x", current_name: "Nobody" }, encounters: [], hunterSummary: null };
-    expect(overlayStats(bare, now)).toEqual({ todayClaimed: 0, cycleContracts: null, bestPayout: null });
+    expect(overlayStats(bare, now)).toEqual({ todayClaimed: 0, cycleContracts: null, cycleBest: null, recordBest: null });
   });
 });
 
@@ -66,5 +70,36 @@ describe("credits formatting", () => {
     expect(formatCredits(125000)).toBe("125,000");
     expect(formatCredits(0)).toBeNull();
     expect(formatCredits(null)).toBeNull();
+  });
+});
+
+describe("period views", () => {
+  it("recent keeps the rolling rows and the summary tiles", () => {
+    const view = overlayView(dossier, "recent", 4, now);
+    expect(view.rows.map((r) => r.target)).toEqual(["Mahi", "Dex", "Avolo", "Serverside"]);
+    expect(view.omitted).toBe(0);
+    expect(view.tiles.map((t) => [t.label, t.value])).toEqual([
+      ["Today", "2 claimed"], ["Contracts", "12"], ["Cycle best", "190,000 cr"], ["Record", "190,000 cr"],
+    ]);
+  });
+  it("today shows only the local day with day totals", () => {
+    const view = overlayView(dossier, "today", 20, now);
+    expect(view.rows).toHaveLength(4);
+    expect(view.omitted).toBe(0);
+    expect(view.tiles.map((t) => [t.label, t.value])).toEqual([
+      ["Claimed", "2"], ["Failed", "1"], ["Credits", "315,000 cr"], ["Best", "190,000 cr"],
+    ]);
+  });
+  it("cycle shows the leaderboard window with the archived cycle stats", () => {
+    const view = overlayView(dossier, "cycle", 20, now);
+    expect(view.rows).toHaveLength(4);
+    expect(view.tiles.map((t) => [t.label, t.value])).toEqual([
+      ["Contracts", "12"], ["Claimed", "7"], ["Credits", "900,000 cr"], ["Cycle best", "190,000 cr"],
+    ]);
+  });
+  it("today explains an empty day", () => {
+    const view = overlayView({ ...dossier, encounters: [dossier.encounters[4]] }, "today", 10, now);
+    expect(view.rows).toHaveLength(0);
+    expect(view.emptyNote).toMatch(/No contracts today/);
   });
 });

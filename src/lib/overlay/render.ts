@@ -11,16 +11,18 @@ import { existsSync } from "node:fs";
 
 export interface OverlayImageParams {
   name: string;
-  rows: number;
+  period: "recent" | "today" | "cycle";
+  rows?: number;
   title?: string;
   avatar?: string;
   scale: number;
 }
 
-export function clampOverlayParams(input: { name: string; rows?: number; title?: string; avatar?: string; scale?: number }): OverlayImageParams {
+export function clampOverlayParams(input: { name: string; period?: string; rows?: number; title?: string; avatar?: string; scale?: number }): OverlayImageParams {
   return {
     name: input.name.trim().slice(0, 100),
-    rows: Math.max(1, Math.min(10, Math.floor(input.rows ?? 4) || 4)),
+    period: input.period === "today" || input.period === "cycle" ? input.period : "recent",
+    rows: input.rows === undefined ? undefined : Math.max(1, Math.min(20, Math.floor(input.rows) || 4)),
     title: input.title?.slice(0, 40) || undefined,
     avatar: input.avatar?.slice(0, 500) || undefined,
     scale: Math.max(0.4, Math.min(3, input.scale ?? 1)),
@@ -28,7 +30,9 @@ export function clampOverlayParams(input: { name: string; rows?: number; title?:
 }
 
 export function overlayPageUrl(base: string, params: OverlayImageParams): string {
-  const query = new URLSearchParams({ name: params.name, rows: String(params.rows) });
+  const query = new URLSearchParams({ name: params.name });
+  if (params.period !== "recent") query.set("period", params.period);
+  if (params.rows !== undefined) query.set("rows", String(params.rows));
   if (params.title) query.set("title", params.title);
   if (params.avatar) query.set("avatar", params.avatar);
   // Scale is applied by the viewport below so the PNG stays sharp; the page
@@ -62,7 +66,7 @@ async function screenshotOverlay(params: OverlayImageParams): Promise<Buffer> {
   });
   try {
     const page = await browser.newPage({
-      viewport: { width: 1000, height: 760 },
+      viewport: { width: 1000, height: 1900 },
       deviceScaleFactor: Math.max(0.4, Math.min(3, 2 * params.scale)),
     });
     await page.goto(overlayPageUrl(renderBaseUrl(), params), { waitUntil: "domcontentloaded", timeout: 20_000 });
