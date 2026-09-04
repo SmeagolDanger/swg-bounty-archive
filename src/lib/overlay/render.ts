@@ -22,7 +22,7 @@ export function clampOverlayParams(input: { name: string; period?: string; rows?
   return {
     name: input.name.trim().slice(0, 100),
     period: input.period === "today" || input.period === "cycle" ? input.period : "recent",
-    rows: input.rows === undefined ? undefined : Math.max(1, Math.min(20, Math.floor(input.rows) || 4)),
+    rows: input.rows === undefined ? undefined : Math.max(1, Math.min(100, Math.floor(input.rows) || 4)),
     title: input.title?.slice(0, 40) || undefined,
     avatar: input.avatar?.slice(0, 500) || undefined,
     scale: Math.max(0.4, Math.min(3, input.scale ?? 1)),
@@ -75,6 +75,12 @@ async function screenshotOverlay(params: OverlayImageParams): Promise<Buffer> {
     // "Contacting the Ledger…" placeholder.
     await page.waitForSelector("[data-overlay-ready]", { timeout: 20_000 });
     const panel = page.locator("[data-overlay-root]");
+    // Grow the viewport to the rendered panel so tall today/cycle windows
+    // are captured whole — the PNG always matches the page.
+    const box = await panel.boundingBox();
+    if (box && box.height + 80 > 1900) {
+      await page.setViewportSize({ width: 1000, height: Math.min(9000, Math.ceil(box.height) + 80) });
+    }
     return Buffer.from(await panel.screenshot({ type: "png", omitBackground: true }));
   } finally {
     await browser.close();

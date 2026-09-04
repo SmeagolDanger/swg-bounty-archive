@@ -5,8 +5,8 @@ import type { OverlayPeriod } from "@/lib/overlay/model";
 // OBS browser-source overlay. Add a Browser source in OBS pointing at
 //   https://jawatracks.com/overlay?name=YourHunter
 // with a transparent background; the panel polls the public API and keeps
-// itself current. Options: period (recent | today | cycle), rows (1-20),
-// refresh (seconds), title, avatar
+// itself current. Options: period (recent | today | cycle), rows (1-100,
+// default: 4 for recent, the full window for today/cycle), refresh, title, avatar
 // (image URL for the portrait), scale. today/cycle show that full window.
 //
 // The site chrome is hidden and the body made transparent by the styles
@@ -143,16 +143,14 @@ export default async function OverlayPage({ searchParams }: { searchParams: Prom
   const name = one(query.name)?.trim().slice(0, 100);
   const periodRaw = one(query.period);
   const period: OverlayPeriod = periodRaw === "today" || periodRaw === "cycle" ? periodRaw : "recent";
-  const defaults: Record<OverlayPeriod, { rows: number; title: string }> = {
-    recent: { rows: 4, title: "Recent bounties" },
-    today: { rows: 10, title: "Today's ledger" },
-    cycle: { rows: 10, title: "Cycle report" },
-  };
-  const rows = Math.max(1, Math.min(20, Number(one(query.rows)) || defaults[period].rows));
+  const titles: Record<OverlayPeriod, string> = { recent: "Recent bounties", today: "Today's ledger", cycle: "Cycle report" };
+  // today/cycle show their whole window unless rows is given explicitly.
+  const rowsRaw = Number(one(query.rows));
+  const rows = Number.isFinite(rowsRaw) && rowsRaw > 0 ? Math.max(1, Math.min(100, Math.floor(rowsRaw))) : undefined;
   const refresh = Math.max(10, Math.min(600, Number(one(query.refresh)) || 30));
   const scale = Math.max(0.4, Math.min(3, Number(one(query.scale)) || 1));
   const avatar = one(query.avatar)?.slice(0, 500);
-  const title = (one(query.title) ?? defaults[period].title).slice(0, 40);
+  const title = (one(query.title) ?? titles[period]).slice(0, 40);
 
   return <>
     <style dangerouslySetInnerHTML={{ __html: css }} />

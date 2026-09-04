@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 const querySchema = z.object({
   name: z.string().trim().min(1).max(100),
   period: z.enum(["recent", "today", "cycle"]).optional(),
-  rows: z.coerce.number().int().min(1).max(20).optional(),
+  rows: z.coerce.number().int().min(1).max(100).optional(),
   title: z.string().max(40).optional(),
   avatar: z.url().max(500).optional(),
   scale: z.coerce.number().min(0.4).max(3).optional(),

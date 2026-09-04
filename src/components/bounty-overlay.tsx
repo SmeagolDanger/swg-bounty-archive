@@ -37,7 +37,7 @@ const TILE_ICONS: Record<OverlayTileIcon, () => React.ReactNode> = { aim: Crossh
 interface Search { results: Array<{ id: string; participant_type: string; current_name: string }> }
 
 export function BountyOverlay({ name, rows: rowCount, refresh, avatar, title, period }: {
-  name: string; rows: number; refresh: number; avatar?: string; title: string; period: OverlayPeriod;
+  name: string; rows?: number; refresh: number; avatar?: string; title: string; period: OverlayPeriod;
 }) {
   const [dossier, setDossier] = useState<OverlayDossier | null>(null);
   const [error, setError] = useState<string | null>(null);

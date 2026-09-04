@@ -82,20 +82,26 @@ describe("period views", () => {
       ["Today", "2 claimed"], ["Contracts", "12"], ["Cycle best", "190,000 cr"], ["Record", "190,000 cr"],
     ]);
   });
-  it("today shows only the local day with day totals", () => {
-    const view = overlayView(dossier, "today", 20, now);
+  it("today shows the whole local day by default, with day totals", () => {
+    const view = overlayView(dossier, "today", undefined, now);
     expect(view.rows).toHaveLength(4);
     expect(view.omitted).toBe(0);
     expect(view.tiles.map((t) => [t.label, t.value])).toEqual([
       ["Claimed", "2"], ["Failed", "1"], ["Credits", "315,000 cr"], ["Best", "190,000 cr"],
     ]);
   });
-  it("cycle shows the leaderboard window with the archived cycle stats", () => {
-    const view = overlayView(dossier, "cycle", 20, now);
+  it("cycle shows the whole leaderboard window with the archived cycle stats", () => {
+    const view = overlayView(dossier, "cycle", undefined, now);
     expect(view.rows).toHaveLength(4);
     expect(view.tiles.map((t) => [t.label, t.value])).toEqual([
       ["Contracts", "12"], ["Claimed", "7"], ["Credits", "900,000 cr"], ["Cycle best", "190,000 cr"],
     ]);
+  });
+  it("reports a remainder only when an explicit limit cuts a bounded window", () => {
+    const limited = overlayView(dossier, "today", 2, now);
+    expect(limited.rows).toHaveLength(2);
+    expect(limited.omitted).toBe(2);
+    expect(overlayView(dossier, "recent", 2, now).omitted).toBe(0);
   });
   it("today explains an empty day", () => {
     const view = overlayView({ ...dossier, encounters: [dossier.encounters[4]] }, "today", 10, now);

@@ -3,7 +3,7 @@ import { clampOverlayParams, overlayCacheKey, overlayPageUrl } from "./render";
 
 describe("overlay image parameters", () => {
   it("clamps rows and scale, defaults the period, and trims the rest", () => {
-    expect(clampOverlayParams({ name: "  ChickenRat  ", rows: 99, scale: 9 })).toEqual({ name: "ChickenRat", period: "recent", rows: 20, title: undefined, avatar: undefined, scale: 3 });
+    expect(clampOverlayParams({ name: "  ChickenRat  ", rows: 999, scale: 9 })).toEqual({ name: "ChickenRat", period: "recent", rows: 100, title: undefined, avatar: undefined, scale: 3 });
     expect(clampOverlayParams({ name: "x", rows: 0, scale: 0.1 })).toEqual({ name: "x", period: "recent", rows: 4, title: undefined, avatar: undefined, scale: 0.4 });
     expect(clampOverlayParams({ name: "x", period: "today" }).period).toBe("today");
     expect(clampOverlayParams({ name: "x", period: "bogus" }).period).toBe("recent");

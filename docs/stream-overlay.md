@@ -19,8 +19,8 @@ The panel refreshes itself from the archive; no OBS refresh needed.
 | Param | Default | Meaning |
 | --- | --- | --- |
 | `name` | required | Hunter name (case-insensitive; resolved via archive search) |
-| `period` | recent | `recent` (rolling last contracts), `today` (the viewer-local day in full), or `cycle` (this leaderboard week in full) — today/cycle get day/cycle totals in the footer and a “… n more” remainder |
-| `rows` | 4 / 10 | Encounter rows, 1–20 (default 4 for recent, 10 for today/cycle) |
+| `period` | recent | `recent` (rolling last contracts), `today` (the viewer-local day in full), or `cycle` (this leaderboard week in full) — today/cycle show the FULL window with day/cycle totals in the footer |
+| `rows` | 4 / all | Row limit, 1–100. Default: 4 for recent; today/cycle show everything in the window (a “… n more” remainder appears only when rows cuts them) |
 | `refresh` | 30 | Poll interval in seconds (min 10; API responses are cached ~30 s) |
 | `title` | Recent bounties | The red `// …` subtitle |
 | `avatar` | — | Image URL for the circular portrait (defaults to a skull emblem) |

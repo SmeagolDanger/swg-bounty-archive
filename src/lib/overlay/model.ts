@@ -74,7 +74,7 @@ export function resultFor(row: OverlayEncounter, name: string): { result: Overla
 
 export function overlayRows(dossier: OverlayDossier, limit: number, now: Date): OverlayRow[] {
   const name = dossier.participant.current_name;
-  return dossier.encounters.slice(0, Math.max(1, Math.min(10, limit))).map((row, index) => {
+  return dossier.encounters.slice(0, Math.max(1, Math.min(100, limit))).map((row, index) => {
     const { result, opponent } = resultFor(row, name);
     return {
       key: row.id ?? `${row.event_at}-${index}`,
@@ -132,9 +132,10 @@ const inWindow = (row: OverlayEncounter, start: number, end: number | null) => {
 };
 
 // One panel view: the encounter rows for the chosen window plus the footer
-// tiles that describe that window. "recent" is the rolling default; "today"
-// and "cycle" show the full window (up to the row limit, with a remainder).
-export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limit: number, now: Date): OverlayViewModel {
+// tiles that describe that window. "recent" is a rolling view (default 4
+// rows); "today" and "cycle" show their full window unless an explicit row
+// limit is given, in which case a remainder note reports what was cut.
+export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limit: number | undefined, now: Date): OverlayViewModel {
   const name = dossier.participant.current_name;
   const key = name.toLowerCase();
   const gold = (value: string | null) => value ? `${value} cr` : "—";
@@ -180,12 +181,14 @@ export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limi
     emptyNote = "No archived contracts for this hunter yet.";
   }
 
-  const capped = Math.max(1, Math.min(20, limit));
+  const capped = limit !== undefined
+    ? Math.max(1, Math.min(100, limit))
+    : period === "recent" ? 4 : Math.max(1, windowRows.length);
   const shown = windowRows.slice(0, capped);
   return {
     rows: overlayRows({ ...dossier, encounters: shown }, capped, now),
     // "recent" is a rolling view, not a bounded window; a remainder count
-    // only means something for today/cycle.
+    // only means something when a bounded window was explicitly limited.
     omitted: period === "recent" ? 0 : windowRows.length - shown.length,
     tiles,
     emptyNote,
