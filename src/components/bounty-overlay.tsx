@@ -36,8 +36,8 @@ const TILE_ICONS: Record<OverlayTileIcon, () => React.ReactNode> = { aim: Crossh
 
 interface Search { results: Array<{ id: string; participant_type: string; current_name: string }> }
 
-export function BountyOverlay({ name, rows: rowCount, refresh, avatar, title, period }: {
-  name: string; rows?: number; refresh: number; avatar?: string; title: string; period: OverlayPeriod;
+export function BountyOverlay({ name, rows: rowCount, refresh, avatar, title, period, tz }: {
+  name: string; rows?: number; refresh: number; avatar?: string; title: string; period: OverlayPeriod; tz?: string;
 }) {
   const [dossier, setDossier] = useState<OverlayDossier | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function BountyOverlay({ name, rows: rowCount, refresh, avatar, title, pe
   }, [name, refresh]);
 
   const now = useMemo(() => new Date(), [dossier, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const view = dossier ? overlayView(dossier, period, rowCount, now) : null;
+  const view = dossier ? overlayView(dossier, period, rowCount, now, tz) : null;
   const displayName = dossier?.participant.current_name ?? name;
 
   // data-overlay-ready lets the server-side PNG renderer (/api/overlay/image)

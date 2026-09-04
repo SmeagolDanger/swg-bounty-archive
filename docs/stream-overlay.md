@@ -20,6 +20,7 @@ The panel refreshes itself from the archive; no OBS refresh needed.
 | --- | --- | --- |
 | `name` | required | Hunter name (case-insensitive; resolved via archive search) |
 | `period` | recent | `recent` (rolling last contracts), `today` (the viewer-local day in full), or `cycle` (this leaderboard week in full) — today/cycle show the FULL window with day/cycle totals in the footer |
+| `tz` | browser / UTC | IANA zone for the `today` boundary. The page defaults to the viewer’s browser zone; the PNG endpoint renders on the server (UTC), so pass `tz=America/Halifax`-style to get your own day |
 | `rows` | 4 / all | Row limit, 1–100. Default: 4 for recent; today/cycle show everything in the window (a “… n more” remainder appears only when rows cuts them) |
 | `refresh` | 30 | Poll interval in seconds (min 10; API responses are cached ~30 s) |
 | `title` | Recent bounties | The red `// …` subtitle |

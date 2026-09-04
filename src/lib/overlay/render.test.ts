@@ -3,22 +3,27 @@ import { clampOverlayParams, overlayCacheKey, overlayPageUrl } from "./render";
 
 describe("overlay image parameters", () => {
   it("clamps rows and scale, defaults the period, and trims the rest", () => {
-    expect(clampOverlayParams({ name: "  ChickenRat  ", rows: 999, scale: 9 })).toEqual({ name: "ChickenRat", period: "recent", rows: 100, title: undefined, avatar: undefined, scale: 3 });
-    expect(clampOverlayParams({ name: "x", rows: 0, scale: 0.1 })).toEqual({ name: "x", period: "recent", rows: 4, title: undefined, avatar: undefined, scale: 0.4 });
+    expect(clampOverlayParams({ name: "  ChickenRat  ", rows: 999, scale: 9 })).toEqual({ name: "ChickenRat", period: "recent", tz: "UTC", rows: 100, title: undefined, avatar: undefined, scale: 3 });
+    expect(clampOverlayParams({ name: "x", rows: 0, scale: 0.1 })).toEqual({ name: "x", period: "recent", tz: "UTC", rows: 4, title: undefined, avatar: undefined, scale: 0.4 });
     expect(clampOverlayParams({ name: "x", period: "today" }).period).toBe("today");
     expect(clampOverlayParams({ name: "x", period: "bogus" }).period).toBe("recent");
     expect(clampOverlayParams({ name: "x" }).rows).toBeUndefined();
+    expect(clampOverlayParams({ name: "x", tz: "America/Halifax" }).tz).toBe("America/Halifax");
+    expect(clampOverlayParams({ name: "x", tz: "Not/AZone" }).tz).toBe("UTC");
   });
   it("builds the page URL with only the provided options", () => {
     expect(overlayPageUrl("http://127.0.0.1:3000/", clampOverlayParams({ name: "Chicken Rat", rows: 4 })))
       .toBe("http://127.0.0.1:3000/overlay?name=Chicken+Rat&rows=4");
     expect(overlayPageUrl("http://web:3000", clampOverlayParams({ name: "x", period: "cycle", title: "Bounties", avatar: "https://a/b.png" })))
       .toBe("http://web:3000/overlay?name=x&period=cycle&title=Bounties&avatar=https%3A%2F%2Fa%2Fb.png");
+    expect(overlayPageUrl("http://web:3000", clampOverlayParams({ name: "x", period: "today", tz: "America/Halifax" })))
+      .toBe("http://web:3000/overlay?name=x&period=today&tz=America%2FHalifax");
   });
   it("keys the cache by every parameter", () => {
     const a = overlayCacheKey(clampOverlayParams({ name: "x", rows: 4 }));
     expect(a).toBe(overlayCacheKey(clampOverlayParams({ name: "x", rows: 4 })));
     expect(a).not.toBe(overlayCacheKey(clampOverlayParams({ name: "x", rows: 5 })));
     expect(a).not.toBe(overlayCacheKey(clampOverlayParams({ name: "x", rows: 4, period: "today" })));
+    expect(overlayCacheKey(clampOverlayParams({ name: "x", period: "today", tz: "UTC" }))).not.toBe(overlayCacheKey(clampOverlayParams({ name: "x", period: "today", tz: "America/Halifax" })));
   });
 });

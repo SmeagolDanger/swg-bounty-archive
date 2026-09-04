@@ -12,16 +12,25 @@ import { existsSync } from "node:fs";
 export interface OverlayImageParams {
   name: string;
   period: "recent" | "today" | "cycle";
+  tz: string;
   rows?: number;
   title?: string;
   avatar?: string;
   scale: number;
 }
 
-export function clampOverlayParams(input: { name: string; period?: string; rows?: number; title?: string; avatar?: string; scale?: number }): OverlayImageParams {
+const validTimeZone = (value: string | undefined): string => {
+  if (!value) return "UTC";
+  try { new Intl.DateTimeFormat("en", { timeZone: value }); return value; } catch { return "UTC"; }
+};
+
+export function clampOverlayParams(input: { name: string; period?: string; tz?: string; rows?: number; title?: string; avatar?: string; scale?: number }): OverlayImageParams {
   return {
     name: input.name.trim().slice(0, 100),
     period: input.period === "today" || input.period === "cycle" ? input.period : "recent",
+    // The server renders in a UTC container; without an explicit zone the
+    // "today" boundary would be UTC midnight regardless of the streamer.
+    tz: validTimeZone(input.tz),
     rows: input.rows === undefined ? undefined : Math.max(1, Math.min(100, Math.floor(input.rows) || 4)),
     title: input.title?.slice(0, 40) || undefined,
     avatar: input.avatar?.slice(0, 500) || undefined,
@@ -32,6 +41,7 @@ export function clampOverlayParams(input: { name: string; period?: string; rows?
 export function overlayPageUrl(base: string, params: OverlayImageParams): string {
   const query = new URLSearchParams({ name: params.name });
   if (params.period !== "recent") query.set("period", params.period);
+  if (params.period === "today") query.set("tz", params.tz);
   if (params.rows !== undefined) query.set("rows", String(params.rows));
   if (params.title) query.set("title", params.title);
   if (params.avatar) query.set("avatar", params.avatar);

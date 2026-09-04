@@ -86,13 +86,19 @@ export function overlayRows(dossier: OverlayDossier, limit: number, now: Date): 
   });
 }
 
-const sameLocalDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+// Calendar day of a moment in a given IANA zone (environment-local when no
+// zone is given). "Today" must be the STREAMER'S day, not the renderer's: the
+// PNG endpoint runs in a UTC container, so without an explicit zone its
+// "today" would roll over at UTC midnight and diverge from the page.
+export function dayKey(value: Date, timeZone?: string): string {
+  return new Intl.DateTimeFormat("en-CA", { ...(timeZone ? { timeZone } : {}), year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+}
+const sameLocalDay = (a: Date, b: Date, timeZone?: string) => dayKey(a, timeZone) === dayKey(b, timeZone);
 
-export function overlayStats(dossier: OverlayDossier, now: Date): OverlayStats {
+export function overlayStats(dossier: OverlayDossier, now: Date, timeZone?: string): OverlayStats {
   const name = dossier.participant.current_name.toLowerCase();
   const todayClaimed = dossier.encounters.filter((row) =>
-    row.outcome === "KILL" && row.hunter_name.toLowerCase() === name && sameLocalDay(new Date(row.event_at), now)).length;
+    row.outcome === "KILL" && row.hunter_name.toLowerCase() === name && sameLocalDay(new Date(row.event_at), now, timeZone)).length;
   const stats = dossier.encounters.find((row) => row.hunter_name.toLowerCase() === name && row.hunter_stats)?.hunter_stats ?? null;
 
   // Best claim inside the current cycle, from the recent encounter window the
@@ -135,7 +141,7 @@ const inWindow = (row: OverlayEncounter, start: number, end: number | null) => {
 // tiles that describe that window. "recent" is a rolling view (default 4
 // rows); "today" and "cycle" show their full window unless an explicit row
 // limit is given, in which case a remainder note reports what was cut.
-export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limit: number | undefined, now: Date): OverlayViewModel {
+export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limit: number | undefined, now: Date, timeZone?: string): OverlayViewModel {
   const name = dossier.participant.current_name;
   const key = name.toLowerCase();
   const gold = (value: string | null) => value ? `${value} cr` : "—";
@@ -145,7 +151,7 @@ export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limi
   let emptyNote: string;
 
   if (period === "today") {
-    windowRows = dossier.encounters.filter((row) => sameLocalDay(new Date(row.event_at), now));
+    windowRows = dossier.encounters.filter((row) => sameLocalDay(new Date(row.event_at), now, timeZone));
     const mine = windowRows.filter((row) => row.hunter_name.toLowerCase() === key);
     const claims = mine.filter((row) => row.outcome === "KILL");
     const paid = claims.reduce((sum, row) => sum + Number(row.credits ?? 0), 0);
@@ -171,7 +177,7 @@ export function overlayView(dossier: OverlayDossier, period: OverlayPeriod, limi
     emptyNote = "No contracts this cycle yet.";
   } else {
     windowRows = dossier.encounters;
-    const stats = overlayStats(dossier, now);
+    const stats = overlayStats(dossier, now, timeZone);
     tiles = [
       { icon: "aim", label: "Today", value: `${stats.todayClaimed} claimed`, tone: "good" },
       { icon: "list", label: "Contracts", value: String(stats.cycleContracts ?? "—") },

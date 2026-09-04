@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCredits, overlayRows, overlayStats, overlayView, relativeAge, resultFor, type OverlayDossier } from "./model";
+import { dayKey, formatCredits, overlayRows, overlayStats, overlayView, relativeAge, resultFor, type OverlayDossier } from "./model";
 
 const now = new Date("2026-09-03T18:00:00");
 const at = (iso: string) => new Date(iso).toISOString();
@@ -107,5 +107,28 @@ describe("period views", () => {
     const view = overlayView({ ...dossier, encounters: [dossier.encounters[4]] }, "today", 10, now);
     expect(view.rows).toHaveLength(0);
     expect(view.emptyNote).toMatch(/No contracts today/);
+  });
+});
+
+describe("timezone-aware today", () => {
+  // 01:30 UTC on Sep 4 = 22:30 on Sep 3 in Halifax (UTC-3 in September).
+  const lateNow = new Date("2026-09-04T01:30:00Z");
+  const tzDossier: OverlayDossier = {
+    participant: { id: "p", current_name: "Polarix" },
+    encounters: [
+      { id: "n", event_at: "2026-09-04T01:00:00.000Z", outcome: "FAILED", hunter_name: "Polarix", target_name: "Saavin", credits: 0 },
+      { id: "o", event_at: "2026-09-03T20:00:00.000Z", outcome: "KILL", hunter_name: "Polarix", target_name: "Swagalicious", credits: 65248 },
+    ],
+    hunterSummary: null,
+  };
+  it("keys days in the requested zone", () => {
+    expect(dayKey(lateNow, "UTC")).toBe("2026-09-04");
+    expect(dayKey(lateNow, "America/Halifax")).toBe("2026-09-03");
+  });
+  it("UTC midnight splits the day the streamer's zone keeps whole", () => {
+    expect(overlayView(tzDossier, "today", undefined, lateNow, "UTC").rows).toHaveLength(1);
+    const local = overlayView(tzDossier, "today", undefined, lateNow, "America/Halifax");
+    expect(local.rows).toHaveLength(2);
+    expect(local.tiles.find((t) => t.label === "Claimed")?.value).toBe("1");
   });
 });

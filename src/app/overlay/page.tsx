@@ -6,7 +6,8 @@ import type { OverlayPeriod } from "@/lib/overlay/model";
 //   https://jawatracks.com/overlay?name=YourHunter
 // with a transparent background; the panel polls the public API and keeps
 // itself current. Options: period (recent | today | cycle), rows (1-100,
-// default: 4 for recent, the full window for today/cycle), refresh, title, avatar
+// default: 4 for recent, the full window for today/cycle), tz (IANA zone for
+// the 'today' boundary; defaults to the viewer's browser), refresh, title, avatar
 // (image URL for the portrait), scale. today/cycle show that full window.
 //
 // The site chrome is hidden and the body made transparent by the styles
@@ -151,12 +152,15 @@ export default async function OverlayPage({ searchParams }: { searchParams: Prom
   const scale = Math.max(0.4, Math.min(3, Number(one(query.scale)) || 1));
   const avatar = one(query.avatar)?.slice(0, 500);
   const title = (one(query.title) ?? titles[period]).slice(0, 40);
+  const tzRaw = one(query.tz)?.slice(0, 64);
+  let tz: string | undefined;
+  try { if (tzRaw) { new Intl.DateTimeFormat("en", { timeZone: tzRaw }); tz = tzRaw; } } catch { /* unknown zone falls back to browser-local */ }
 
   return <>
     <style dangerouslySetInnerHTML={{ __html: css }} />
     <div style={{ ["--overlay-scale" as never]: String(scale) }}>
       {name
-        ? <BountyOverlay name={name} rows={rows} refresh={refresh} avatar={avatar} title={title} period={period} />
+        ? <BountyOverlay name={name} rows={rows} refresh={refresh} avatar={avatar} title={title} period={period} tz={tz} />
         : <div className="bounty-overlay"><div className="panel-frame"><div className="board-note" style={{ padding: "1rem" }}>
             Add ?name=YourHunter to the URL — e.g. /overlay?name=ChickenRat&rows=4
           </div></div></div>}
