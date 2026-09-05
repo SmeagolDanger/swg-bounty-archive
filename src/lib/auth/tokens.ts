@@ -3,9 +3,9 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 // Bearer credentials are 32 random bytes, base64url on the wire, sha256 at
 // rest. Prefixes make a leaked string identifiable without being guessable.
 
-export type TokenKind = "session" | "api";
+export type TokenKind = "session";
 
-const PREFIX: Record<TokenKind, string> = { session: "jts_", api: "jtk_" };
+const PREFIX: Record<TokenKind, string> = { session: "jts_" };
 
 export function mintToken(kind: TokenKind): { token: string; hash: string } {
   const token = PREFIX[kind] + randomBytes(32).toString("base64url");

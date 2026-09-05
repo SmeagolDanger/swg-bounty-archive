@@ -2,7 +2,6 @@ import { writeFile } from "node:fs/promises";
 import { pool } from "../src/lib/db/client";
 import { runIngestion } from "../src/lib/ingestion/pipeline";
 import { maybePostWeeklyReport } from "../src/lib/discord/weekly-post";
-import { maybePurgeCombatEvents } from "../src/lib/combat/retention";
 import { axiomConfigured, flushAxiom } from "../src/lib/observability/axiom";
 import { errorLogContext, log } from "../src/lib/observability/logger";
 
@@ -52,7 +51,6 @@ try {
         const result = await runIngestion("POLL");
         await heartbeat("idle", result.runId, result.status);
         await maybePostWeeklyReport();
-        await maybePurgeCombatEvents();
       } catch (error) {
         await heartbeat("error", undefined, "FAILED").catch(() => undefined);
         log.error("source_processing_failed", {

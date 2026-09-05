@@ -61,29 +61,6 @@ export async function authedUser(request?: Request): Promise<AuthedUser | null> 
   return cookie ? userForSessionToken(cookie) : null;
 }
 
-/// Resolve the caller from a companion API token (mail uploads).
-export async function userForApiToken(request: Request): Promise<AuthedUser | null> {
-  const bearer = request.headers.get("authorization");
-  if (!bearer?.startsWith("Bearer ")) return null;
-  const token = bearer.slice(7).trim();
-  if (!looksLike("api", token)) return null;
-  const result = await pool.query(
-    `UPDATE api_tokens SET last_used_at=now()
-     WHERE token_hash=$1 AND revoked_at IS NULL
-     RETURNING user_id`,
-    [hashToken(token)],
-  );
-  const userId = result.rows[0]?.user_id;
-  if (!userId) return null;
-  const user = await pool.query(
-    "SELECT id, discord_id, discord_username, discord_avatar FROM users WHERE id=$1",
-    [userId],
-  );
-  const row = user.rows[0];
-  if (!row) return null;
-  return { id: row.id, discordId: row.discord_id, discordUsername: row.discord_username, discordAvatar: row.discord_avatar };
-}
-
 export function sessionCookieOptions(): { httpOnly: true; secure: boolean; sameSite: "lax"; path: "/"; maxAge: number } {
   return {
     httpOnly: true,

@@ -15,7 +15,7 @@ const mono = JetBrains_Mono({ variable: "--font-mono", subsets: ["latin"], weigh
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
   title: { default: "Jawa Tracks", template: "%s · Jawa Tracks" },
-  description: "Jawa Tracks — the Outer Rim Ledger archive, pilot tools, and sales tracking for SWG Legends.",
+  description: "Jawa Tracks — the Outer Rim Ledger archive and pilot tools for SWG Legends.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#070810" };

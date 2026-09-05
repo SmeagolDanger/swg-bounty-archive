@@ -14,7 +14,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
     <header className="page-head">
       <span className="eyebrow">{"Jawa Tracks // Account"}</span>
       <h1>Account</h1>
-      <p>One Discord sign-in connects the Jawa Tracks app on your devices and the mail companion on your gaming PC. The public archive never requires an account.</p>
+      <p>One Discord sign-in connects the Jawa Tracks app on your devices. The public archive never requires an account.</p>
     </header>
 
     <section className="section"><div className="account-grid">
@@ -24,7 +24,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
         {discordConfigured()
           ? <a className="button account-signin" href="/api/auth/discord/start?client=web">Sign in with Discord</a>
           : <p className="account-hint">Discord sign-in is not configured on this server yet.</p>}
-        <p className="account-hint">Signing in enables loadout &amp; component sync in the app and sales tracking from the mail companion. You stay signed in for 180 days of activity.</p>
+        <p className="account-hint">Signing in enables loadout &amp; component sync in the app. You stay signed in for 180 days of activity.</p>
       </div>}
     </div></section>
   </div>;
