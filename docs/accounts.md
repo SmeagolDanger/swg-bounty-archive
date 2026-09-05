@@ -38,7 +38,9 @@ sync simply pauses.
 ## Data separation
 
 Account tables (`users`, `sessions`, `sync_items`) are additive and cascade
-per user. Nothing reads or writes the bounty/GCW archive tables. The retired
-companion-era tables (`api_tokens`, `mail_messages`, `mail_sales`,
-`mail_purchases`, combat tables) remain in the schema, dormant, so historical
-migrations stay replayable; a future migration may drop them.
+per user. Nothing reads or writes the bounty/GCW archive tables. When the
+companion features were removed, the contractually short-lived combat tables
+and the credential table (`api_tokens`) were dropped by migration 0015; the
+mail archive tables (`mail_messages`, `mail_sales`, `mail_purchases`) are
+deliberately retained with their uploaded history, dormant, and can be
+dropped by a future migration if that history is no longer wanted.

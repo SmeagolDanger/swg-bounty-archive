@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { authedUser } from "@/lib/auth/session";
 import { discordConfigured } from "@/lib/auth/discord";
-import { AccountPanel } from "@/components/account-panel";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export const metadata: Metadata = { title: "Account" };
 export const dynamic = "force-dynamic";
@@ -18,7 +18,16 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
     </header>
 
     <section className="section"><div className="account-grid">
-      {user ? <AccountPanel username={user.discordUsername} avatar={user.discordAvatar}/> : <div className="panel">
+      {user ? <div className="panel account-identity">
+        <div className="panel-header"><h3>Signed in via Discord</h3><span className="chip">180-day session</span></div>
+        <div className="account-user">
+          {/* Discord CDN avatar; a one-off 44px image doesn't warrant next/image. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {user.discordAvatar && <img src={user.discordAvatar} alt="" width={44} height={44} />}
+          <b>{user.discordUsername}</b>
+          <SignOutButton/>
+        </div>
+      </div> : <div className="panel">
         <div className="panel-header"><h3>Sign in</h3></div>
         {typeof query.error === "string" && <div className="notice">Sign-in didn&apos;t complete — try again.</div>}
         {discordConfigured()

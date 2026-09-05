@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { pool } from "@/lib/db/client";
-import { hashToken, looksLike, mintToken } from "./tokens";
+import { hashToken, looksLikeSessionToken, mintToken } from "./tokens";
 
 // Session lifecycle: web sessions ride an httpOnly cookie, app sessions ride
 // an Authorization bearer held in the device keychain. Both slide their
@@ -17,7 +17,7 @@ export interface AuthedUser {
 }
 
 export async function createSession(userId: string, kind: "web" | "app"): Promise<string> {
-  const { token, hash } = mintToken("session");
+  const { token, hash } = mintToken();
   await pool.query(
     `INSERT INTO sessions(token_hash, user_id, kind, expires_at)
      VALUES($1, $2, $3, now() + interval '${SESSION_DAYS} days')`,
@@ -31,7 +31,7 @@ export async function destroySession(token: string): Promise<void> {
 }
 
 async function userForSessionToken(token: string): Promise<AuthedUser | null> {
-  if (!looksLike("session", token)) return null;
+  if (!looksLikeSessionToken(token)) return null;
   const result = await pool.query(
     `UPDATE sessions SET last_used_at=now(),
         expires_at=GREATEST(expires_at, now() + interval '${SESSION_DAYS} days')
