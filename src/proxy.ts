@@ -10,12 +10,14 @@ function isBackgroundNavigation(request: NextRequest) {
     || request.headers.get("accept")?.includes("text/x-component") === true;
 }
 
-// The public API is read-only and serves data that is already public at its source,
-// so any origin may call it. Admin routes are excluded: they never receive CORS
-// headers, and the wildcard is safe because credentials are never allowed with it.
+// The public API serves data that is already public at its source, so any origin
+// may call it. POST exists only for /api/parser-reports, which forwards a redacted
+// report to Discord and never writes to the archive. Admin routes are excluded:
+// they never receive CORS headers, and the wildcard is safe because credentials
+// are never allowed with it.
 const publicApiCors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Accept, Content-Type",
   "Access-Control-Max-Age": "86400",
 };

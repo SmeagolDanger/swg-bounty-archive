@@ -6,7 +6,7 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 
 ## Guarantees
 
-- **Read-only.** Only `GET` and `OPTIONS` are served. Nothing on the public API can modify the archive. Administrative surfaces live under `/admin`, require credentials, and never receive CORS headers.
+- **Read-only archive.** Nothing on the public API can modify the archive. The single `POST` endpoint, `/api/parser-reports`, forwards a redacted BattleTrace parser report to a private Discord channel and stores nothing. Administrative surfaces live under `/admin`, require credentials, and never receive CORS headers.
 - **Validated input.** Every query parameter is schema-validated; invalid input returns `400` with details, unknown ids return `404`, and malformed values are never interpolated into SQL (all queries are parameterized).
 - **Rate limited.** Per client IP per minute (`PUBLIC_API_RATE_LIMIT_PER_MINUTE`, default 120). Exceeding it returns `429` with a `Retry-After` header.
 - **Cached.** List endpoints send `Cache-Control: public, max-age=30, stale-while-revalidate=300`; archived raw responses cache for an hour; `/api/health` is never cached.
@@ -27,6 +27,7 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 | `GET /api/raw-data/{id}` | One archived source response with its exact original payload |
 | `GET /api/dashboard` | Aggregate snapshot: totals, recent activity, top boards |
 | `GET /api/reports/weekly` | Exact-cycle report with all selectable `availableCycles`; pass a returned `starts_at` as the ISO `cycle` parameter to retrieve any archived week |
+| `POST /api/parser-reports` | Accepts a BattleTrace parser report: redacted shapes of unrecognized `[Combat]` lines (numbers → `#`, names → `<name>`) with counts. Validated, limited to 5 per minute per IP, forwarded to Discord; `503` when the server has no webhook configured |
 | `GET /api/overlay/image` | Bounty HUD overlay panel rendered server-side as a transparent PNG (`name`, `rows`, `title`, `avatar`, `scale`) — see [stream-overlay.md](stream-overlay.md) |
 | `GET /api/health` | Liveness of web, database, and collector (503 while degraded) |
 
