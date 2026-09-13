@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { bountySchema, leaderboardSchema, officersSchema } from "./schemas";
+import { bountySchema, leaderboardSchema, officersSchema, isExpectedNullableType } from "./schemas";
 
 const fixture = (name: string) => JSON.parse(readFileSync(path.resolve("fixtures/swg", name), "utf8"));
 
@@ -63,5 +63,21 @@ describe("SWG response parsers", () => {
     const bounty = fixture("bounty-hunting.json");
     bounty.summary.encounters += 1;
     expect(() => bountySchema.parse(bounty)).toThrow(/Kills plus failures/);
+  });
+});
+
+
+describe("nullable schema type expectations", () => {
+  it("accepts first strings as well as nulls on nullable text paths", () => {
+    for (const type of ["null", "string"]) {
+      expect(isExpectedNullableType("$.guildWins[].faction", type)).toBe(true);
+    }
+  });
+
+  it("preserves alerts for incompatible types and other paths", () => {
+    expect(isExpectedNullableType("$.guildWins[].faction", "number")).toBe(false);
+    expect(isExpectedNullableType("$.guildWins[].wins", "null")).toBe(false);
+    expect(isExpectedNullableType("$.summary.largestBounty", "string")).toBe(false);
+    expect(isExpectedNullableType("$.summary.largestBounty", "null")).toBe(true);
   });
 });
