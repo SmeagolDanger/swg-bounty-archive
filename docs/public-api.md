@@ -16,7 +16,7 @@ Data originates from the public SWG Legends endpoints and is republished as an i
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/encounters` | Immutable encounter log with name, outcome, payout, and date filters (`tz`-aware); rows include `hunter_stats` (current-cycle + archive-total record for the hunter) |
+| `GET /api/encounters` | Immutable encounter log with name, outcome, payout, and date filters (`tz`-aware); `hunter=Name` matches the hunter exactly (case-insensitive), `q=` substring-matches hunter or target; rows include `hunter_stats` (current-cycle + archive-total record for the hunter) unless `includeStats=false` |
 | `GET /api/hunters` | Hunter directory with board ranks and derived archive records |
 | `GET /api/hunters/{id}` | Full dossier: history, encounters, opponents, rivalries, summaries, weekly GCW standings (`gcwStandings`), Officers' Salute commission (`officerSalute`) |
 | `GET /api/guilds` | Guild standings combined with roster-derived activity |
@@ -50,11 +50,19 @@ curl -s "https://jawatracks.com/api/encounters?outcome=KILL&minCredits=50000" | 
     "cycle_starts_at": "2026-08-15T22:00:00.000Z",
     "cycle_ends_at": "2026-08-22T22:00:00.000Z",
     "cycle_encounters": 2, "cycle_kills": 2, "cycle_deaths": 0, "cycle_failures": 0, "cycle_credits": 45082,
-    "overall_encounters": 3, "overall_kills": 3, "overall_deaths": 0, "overall_failures": 0, "overall_credits": 68025
+    "cycle_targeted": 1, "cycle_target_deaths": 0,
+    "overall_encounters": 3, "overall_kills": 3, "overall_deaths": 0, "overall_failures": 0, "overall_credits": 68025,
+    "overall_targeted": 2, "overall_target_deaths": 0
   }
 }
 ```
 
-`cycle_deaths` and `overall_deaths` count both failed contracts by the hunter and successful claims against that player while they were the target. `cycle_failures` and `overall_failures` remain hunter-role failures only; `cycle_encounters` and `overall_encounters` remain hunter-role contract attempts, which are the denominators for claim rate.
+Hunter-role fields: `cycle_encounters` / `overall_encounters` are contract attempts (the denominators for claim rate), `cycle_kills` / `overall_kills` are collected bounties, and `cycle_failures` / `overall_failures` are failed contracts, which the site shows as hunter deaths.
+
+Target-role fields: `cycle_targeted` / `overall_targeted` are contracts issued against the player, and `cycle_target_deaths` / `overall_target_deaths` are the ones that were collected.
+
+`cycle_deaths` and `overall_deaths` are the legacy combined figure, `failures + target_deaths`, retained for compatibility.
+
+`includeStats=false` returns `hunter_stats: null` on every row and skips the aggregation, which is the cheapest way to page through a hunter's raw log for downloads.
 
 Weekly reports use the exact `starts_at` (inclusive) and `ends_at` (exclusive) boundaries archived from the selected source leaderboard period. They are not rolling seven-day summaries.

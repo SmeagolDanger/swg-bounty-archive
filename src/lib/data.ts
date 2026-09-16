@@ -276,6 +276,8 @@ export async function getWeeklyReport(period: WeeklyReportPeriod = "CURRENT", cy
 }
 
 export interface EncounterFilters {
+  hunter?: string;
+  includeStats?: boolean;
   q?: string;
   outcome?: string;
   minCredits?: number;
@@ -291,6 +293,7 @@ export async function getEncounters(filters: EncounterFilters) {
   const values: unknown[] = [];
   const conditions: string[] = [];
   const bind = (value: unknown) => { values.push(value); return `$${values.length}`; };
+  if (filters.hunter) conditions.push(`lower(hunter_name)=lower(${bind(filters.hunter)})`);
   if (filters.q) conditions.push(`(hunter_name ILIKE ${bind(`%${filters.q}%`)} OR target_name ILIKE ${bind(`%${filters.q}%`)})`);
   if (filters.outcome === "KILL" || filters.outcome === "FAILED") conditions.push(`outcome=${bind(filters.outcome)}`);
   if (Number.isFinite(filters.minCredits)) conditions.push(`credits>=${bind(filters.minCredits)}`);
@@ -303,18 +306,23 @@ export async function getEncounters(filters: EncounterFilters) {
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? 25));
   const page = Math.max(1, filters.page ?? 1);
-  const count = await pool.query(`SELECT count(*)::int AS count FROM bounty_encounters ${where}`, values);
+  const count = await pool.query(`SELECT count(*)::int AS count FROM bounty_encounters ${where}`, [...values]);
   values.push(pageSize, (page - 1) * pageSize);
   const rows = await pool.query(
-    `SELECT be.id,be.event_at,be.outcome,be.hunter_name,be.target_name,be.credits,be.fingerprint,
+    `WITH page_rows AS MATERIALIZED (
+       SELECT id,event_at,outcome,hunter_name,target_name,credits,fingerprint
+       FROM bounty_encounters ${where}
+       ORDER BY event_at DESC,id DESC LIMIT $${values.length - 1} OFFSET $${values.length}
+     )
+     SELECT be.id,be.event_at,be.outcome,be.hunter_name,be.target_name,be.credits,be.fingerprint,
       hunter.id AS hunter_participant_id,target.id AS target_participant_id
-     FROM bounty_encounters be
+     FROM page_rows be
      LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.hunter_name) ORDER BY last_seen_at DESC LIMIT 1) hunter ON true
      LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.target_name) ORDER BY last_seen_at DESC LIMIT 1) target ON true
-     ${where} ORDER BY be.event_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`,
+     ORDER BY be.event_at DESC,be.id DESC`,
     values,
   );
-  return { rows: await attachHunterStats(rows.rows), total: count.rows[0].count as number, page, pageSize };
+  return { rows: filters.includeStats === false ? rows.rows.map(row => ({ ...row, hunter_stats: null })) : await attachHunterStats(rows.rows), total: count.rows[0].count as number, page, pageSize };
 }
 
 export interface HunterDirectoryFilters {

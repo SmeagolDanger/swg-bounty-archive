@@ -3,6 +3,8 @@ import { getEncounters, isTimeZone } from "@/lib/data";
 import { rateLimited } from "@/lib/rate-limit";
 
 const querySchema = z.object({
+  hunter: z.string().trim().min(1).max(100).optional(),
+  includeStats: z.enum(["true", "false"]).transform(value => value === "true").optional(),
   q: z.string().trim().max(100).optional(),
   outcome: z.enum(["KILL", "FAILED"]).optional(),
   minCredits: z.coerce.number().int().nonnegative().optional(),

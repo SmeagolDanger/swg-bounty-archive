@@ -22,6 +22,8 @@ const endpoints: Endpoint[] = [
     summary: "The immutable encounter log, newest first.",
     parameters: [
       ["q", "substring match on hunter or target name (≤100 chars)"],
+      ["hunter", "exact case-insensitive hunter name; excludes target-role records"],
+      ["includeStats", "true (default) | false; false skips all-time hunter aggregation for report downloads"],
       ["outcome", "KILL | FAILED"],
       ["minCredits / maxCredits", "inclusive payout bounds, non-negative integers"],
       ["from / to", "YYYY-MM-DD day bounds, interpreted in tz"],
