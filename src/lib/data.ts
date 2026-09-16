@@ -43,14 +43,22 @@ export interface EncounterHunterStats {
   cycle_ends_at: Date | string | null;
   cycle_encounters: number;
   cycle_kills: number;
+  /** Combined: failed contracts as hunter + times killed while targeted. Kept for API compatibility. */
   cycle_deaths: number;
+  /** Failed contracts as hunter (hunter-role deaths). */
   cycle_failures: number;
   cycle_credits: number;
+  /** Contracts issued against this name. */
+  cycle_targeted: number;
+  /** Times killed while being the target. */
+  cycle_target_deaths: number;
   overall_encounters: number;
   overall_kills: number;
   overall_deaths: number;
   overall_failures: number;
   overall_credits: number;
+  overall_targeted: number;
+  overall_target_deaths: number;
 }
 
 async function attachHunterStats<T extends Record<string, unknown>>(encounters: T[]): Promise<Array<T & { hunter_stats: EncounterHunterStats | null }>> {
@@ -67,11 +75,13 @@ async function attachHunterStats<T extends Record<string, unknown>>(encounters: 
     ), actor_events AS (
       SELECT lower(hunter_name) AS hunter_key,event_at,1 AS hunter_encounter,
         (outcome='KILL')::int AS kill,(outcome='FAILED')::int AS failure,(outcome='FAILED')::int AS death,
-        CASE WHEN outcome='KILL' THEN credits ELSE 0 END AS credits
+        CASE WHEN outcome='KILL' THEN credits ELSE 0 END AS credits,
+        0 AS targeted,0 AS target_death
       FROM bounty_encounters WHERE lower(hunter_name)=ANY($1::text[])
       UNION ALL
       SELECT lower(target_name) AS hunter_key,event_at,0 AS hunter_encounter,
-        0 AS kill,0 AS failure,(outcome='KILL')::int AS death,0 AS credits
+        0 AS kill,0 AS failure,(outcome='KILL')::int AS death,0 AS credits,
+        1 AS targeted,(outcome='KILL')::int AS target_death
       FROM bounty_encounters WHERE lower(target_name)=ANY($1::text[])
     )
     SELECT ae.hunter_key,
@@ -81,11 +91,15 @@ async function attachHunterStats<T extends Record<string, unknown>>(encounters: 
       coalesce(sum(ae.death) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_deaths,
       coalesce(sum(ae.failure) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_failures,
       coalesce(sum(ae.credits) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::float8 AS cycle_credits,
+      coalesce(sum(ae.targeted) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_targeted,
+      coalesce(sum(ae.target_death) FILTER(WHERE cc.starts_at IS NOT NULL AND ae.event_at>=cc.starts_at AND (cc.ends_at IS NULL OR ae.event_at<cc.ends_at)),0)::int AS cycle_target_deaths,
       sum(ae.hunter_encounter)::int AS overall_encounters,
       sum(ae.kill)::int AS overall_kills,
       sum(ae.death)::int AS overall_deaths,
       sum(ae.failure)::int AS overall_failures,
-      coalesce(sum(ae.credits),0)::float8 AS overall_credits
+      coalesce(sum(ae.credits),0)::float8 AS overall_credits,
+      sum(ae.targeted)::int AS overall_targeted,
+      sum(ae.target_death)::int AS overall_target_deaths
     FROM actor_events ae
     LEFT JOIN current_cycle cc ON true
     GROUP BY ae.hunter_key,cc.starts_at,cc.ends_at`, [hunterKeys]);

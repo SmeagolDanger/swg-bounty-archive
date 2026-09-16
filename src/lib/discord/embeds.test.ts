@@ -72,7 +72,7 @@ describe("feed embed", () => {
   });
 });
 
-const stats = { cycle_starts_at: "2026-08-15T22:00:00Z", cycle_ends_at: "2026-08-22T22:00:00Z", cycle_encounters: 4, cycle_kills: 3, cycle_deaths: 1, cycle_failures: 1, cycle_credits: 120000, overall_encounters: 10, overall_kills: 7, overall_deaths: 4, overall_failures: 3, overall_credits: 250000 };
+const stats = { cycle_starts_at: "2026-08-15T22:00:00Z", cycle_ends_at: "2026-08-22T22:00:00Z", cycle_encounters: 4, cycle_kills: 3, cycle_deaths: 1, cycle_failures: 1, cycle_credits: 120000, cycle_targeted: 1, cycle_target_deaths: 0, overall_encounters: 10, overall_kills: 7, overall_deaths: 4, overall_failures: 3, overall_credits: 250000, overall_targeted: 3, overall_target_deaths: 1 };
 const dossier: DossierData = {
   participant: { id: "11111111-2222-4333-8444-555555555555", current_name: "Bossk", guild_abbreviation: "TRAN", faction: "Imperial", city_name: "Mos Eisley", planet: "Tatooine", first_seen_at: "2026-06-01T00:00:00Z", last_seen_at: "2026-08-20T00:00:00Z" },
   history: [

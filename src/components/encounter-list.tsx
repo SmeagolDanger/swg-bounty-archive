@@ -17,6 +17,25 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
   return <div className="encounter-stat"><span>{label}</span><b className={tone === "good" ? "health-good" : tone === "bad" ? "health-bad" : tone === "credits" ? "credits" : undefined}>{value}</b></div>;
 }
 
+function RoleLabel({ role, note, tone }: { role: string; note: string; tone: "hunter" | "target" }) {
+  return <div className={`encounter-role encounter-role--${tone}`}><span>{role}</span><small>{note}</small></div>;
+}
+
+function TargetStats({ targeted, killed }: { targeted: unknown; killed: unknown }) {
+  const contracts = Number(targeted ?? 0);
+  const deaths = Number(killed ?? 0);
+  const survived = Math.max(0, contracts - deaths);
+  return <>
+    <RoleLabel role="As target" note={contracts ? `${integer(contracts)} contract${contracts === 1 ? "" : "s"} against` : "No contracts against"} tone="target"/>
+    <div className="encounter-stat-grid">
+      <Stat label="Targeted" value={integer(contracts)}/>
+      <Stat label="Killed" value={integer(deaths)} tone={deaths ? "bad" : undefined}/>
+      <Stat label="Survived" value={integer(survived)} tone={survived ? "good" : undefined}/>
+      <Stat label="Survival rate" value={rate(survived, contracts)}/>
+    </div>
+  </>;
+}
+
 function HunterStats({ row }: { row: Record<string, unknown> }) {
   const stats = row.hunter_stats as EncounterHunterStats | null | undefined;
   if (!stats) return <div className="encounter-detail-empty">No hunter-role summary is available for this name.</div>;
@@ -27,26 +46,30 @@ function HunterStats({ row }: { row: Record<string, unknown> }) {
   return <div className="encounter-detail">
     <div className="encounter-detail-head">
       <div><span>Hunter record</span><strong>{String(row.hunter_name)}</strong></div>
-      <small>Deaths include failed contracts and times killed while targeted</small>
+      <small>Hunter deaths are failed contracts. Target rows count contracts taken out against this name.</small>
     </div>
     <div className="encounter-stat-groups">
       <section className="encounter-stat-group">
         <header><b>Current cycle</b><small>{cycleDates}</small></header>
+        <RoleLabel role="As hunter" note={`${integer(stats.cycle_encounters)} contract${Number(stats.cycle_encounters) === 1 ? "" : "s"}`} tone="hunter"/>
         <div className="encounter-stat-grid">
           <Stat label="Kills" value={integer(stats.cycle_kills)} tone="good"/>
-          <Stat label="Deaths" value={integer(stats.cycle_deaths)} tone="bad"/>
+          <Stat label="Deaths" value={integer(stats.cycle_failures)} tone={Number(stats.cycle_failures) ? "bad" : undefined}/>
           <Stat label="Claim rate" value={rate(stats.cycle_kills, stats.cycle_encounters)}/>
           <Stat label="Credits" value={credits(stats.cycle_credits)} tone="credits"/>
         </div>
+        <TargetStats targeted={stats.cycle_targeted} killed={stats.cycle_target_deaths}/>
       </section>
       <section className="encounter-stat-group">
-        <header><b>Archive total</b><small>{integer(stats.overall_encounters)} contracts</small></header>
+        <header><b>Archive total</b><small>All archived cycles</small></header>
+        <RoleLabel role="As hunter" note={`${integer(stats.overall_encounters)} contracts`} tone="hunter"/>
         <div className="encounter-stat-grid">
           <Stat label="Kills" value={integer(stats.overall_kills)} tone="good"/>
-          <Stat label="Deaths" value={integer(stats.overall_deaths)} tone="bad"/>
+          <Stat label="Deaths" value={integer(stats.overall_failures)} tone={Number(stats.overall_failures) ? "bad" : undefined}/>
           <Stat label="Claim rate" value={rate(stats.overall_kills, stats.overall_encounters)}/>
           <Stat label="Credits" value={credits(stats.overall_credits)} tone="credits"/>
         </div>
+        <TargetStats targeted={stats.overall_targeted} killed={stats.overall_target_deaths}/>
       </section>
     </div>
     {Boolean(row.hunter_participant_id) && <Link className="encounter-profile-link" href={`/hunter/${String(row.hunter_participant_id)}`}>Open hunter dossier →</Link>}

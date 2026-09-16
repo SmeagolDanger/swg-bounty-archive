@@ -118,6 +118,13 @@ a.badge:hover { border-color: var(--signal); color: var(--signal); }
 .encounter-stat span { display: block; color: var(--dim); font: 8px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
 .encounter-stat b { display: block; margin-top: 6px; font: 600 14px var(--font-mono); overflow-wrap: anywhere; }
 .encounter-stat b.credits { font-size: 11px; }
+.encounter-role { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #0b1118; }
+.encounter-role span { position: relative; padding-left: 12px; font: 600 8px var(--font-mono); text-transform: uppercase; letter-spacing: .12em; }
+.encounter-role span::before { content: ""; position: absolute; left: 0; top: 50%; width: 6px; height: 6px; transform: translateY(-50%) rotate(45deg); }
+.encounter-role--hunter span { color: var(--signal); }.encounter-role--hunter span::before { background: var(--signal); }
+.encounter-role--target span { color: var(--amber); }.encounter-role--target span::before { background: var(--amber); }
+.encounter-role small { color: var(--dim); font: 9px var(--font-mono); white-space: nowrap; }
+.encounter-stat-group header + .encounter-role { border-top: 0; }
 .encounter-profile-link { display: inline-block; margin-top: 12px; color: var(--signal); font: 600 9px var(--font-mono); text-transform: uppercase; letter-spacing: .1em; }
 .encounter-profile-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .encounter-detail-empty { margin: 0 10px 12px; padding: 14px; border: 1px dashed var(--line); color: var(--muted); font-size: 12px; }
