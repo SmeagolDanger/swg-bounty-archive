@@ -88,5 +88,7 @@ changes.
 - If a query fails, the user sees "The archive could not answer that right now"
   and the failure is logged; nothing is retried.
 - The bot shares the `web` container, so it scales, deploys, and restarts with
-  the site. The weekly report webhook post (`DISCORD_REPORT_WEBHOOK_URL`) is a
-  separate, worker-side feature and is unaffected.
+  the site. The weekly report webhook post (`DISCORD_REPORT_WEBHOOK_URL`) and
+  the live encounter feed (`DISCORD_BOUNTY_WEBHOOK_URL`, see
+  [discord-encounter-feed.md](discord-encounter-feed.md)) are separate,
+  worker-side features and are unaffected.

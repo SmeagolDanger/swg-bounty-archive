@@ -129,6 +129,7 @@ See [.env.example](.env.example). Important controls:
 - `AXIOM_DATASET`: Axiom Events dataset, recommended `outer-rim-ledger-production` in production.
 - `AXIOM_ENVIRONMENT`: event environment label, normally `production`, `staging`, or `development`.
 - `PARSER_REPORT_WEBHOOK_URL`: optional Discord webhook for BattleTrace parser reports (`POST /api/parser-reports`). The URL stays server-side; leaving it blank disables the endpoint with `503`.
+- `DISCORD_BOUNTY_WEBHOOK_URL`: optional Discord webhook for the live bounty encounter feed. The worker posts each newly archived encounter once, oldest first, after the poll that archived it; blank disables the feed. Historical encounters are never replayed. See [docs/discord-encounter-feed.md](docs/discord-encounter-feed.md).
 - `HEALTH_WORKER_STALE_SECONDS`: public health staleness threshold, default 900 seconds.
 
 No real credentials belong in source control.

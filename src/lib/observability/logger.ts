@@ -20,6 +20,8 @@ export type ObservabilityEvent =
   | "worker_stopped"
   | "discord_report_posted"
   | "discord_report_failed"
+  | "discord_bounty_posted"
+  | "discord_bounty_failed"
   | "discord_interaction_answered"
   | "discord_interaction_failed"
   | "discord_interaction_rejected"

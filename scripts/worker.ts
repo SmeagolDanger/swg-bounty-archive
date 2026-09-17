@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { pool } from "../src/lib/db/client";
 import { runIngestion } from "../src/lib/ingestion/pipeline";
+import { publishPendingDiscordEncounters } from "../src/lib/discord/encounter-feed";
 import { maybePostWeeklyReport } from "../src/lib/discord/weekly-post";
 import { axiomConfigured, flushAxiom } from "../src/lib/observability/axiom";
 import { errorLogContext, log } from "../src/lib/observability/logger";
@@ -50,6 +51,10 @@ try {
         await heartbeat("collecting");
         const result = await runIngestion("POLL");
         await heartbeat("idle", result.runId, result.status);
+        // Notification outputs run after the archive has committed and the
+        // heartbeat has recorded the run. The encounter feed never throws, so
+        // a Discord problem there cannot surface as an ingestion failure.
+        await publishPendingDiscordEncounters();
         await maybePostWeeklyReport();
       } catch (error) {
         await heartbeat("error", undefined, "FAILED").catch(() => undefined);

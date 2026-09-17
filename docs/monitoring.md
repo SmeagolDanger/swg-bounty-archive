@@ -42,6 +42,7 @@ The collector emits:
 - `source_validation_failed`: a `200 OK` response failed semantic validation;
 - `database_transaction_failed`: an archive/normalization transaction or audit write failed;
 - `api_http_error`, `api_rate_limited`, `api_timeout`, and `api_transport_error`;
+- `discord_bounty_posted` / `discord_bounty_failed`: one event per live-feed encounter delivery attempt (`encounter_id`, `outcome`, `event_at`, `http_status`; never the webhook URL). A failure is retried on a later worker cycle and never affects the run status;
 - `axiom_delivery_failed`, `axiom_flush_failed`, and configuration warnings are local-only to avoid recursive delivery failures.
 
 A whole run is `success` only if every source succeeds and passes integrity checks. It is `partial` when at least one source fails or is incomplete while others succeed, and `failed` when every requested source fails or the run aborts. The database keeps its existing uppercase `SUCCEEDED`, `PARTIAL`, and `FAILED` values.
