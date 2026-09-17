@@ -6,11 +6,16 @@ import {
   discordTimestamp,
   formatCredits,
   formatEncounterPayload,
+  parseWebhookList,
   publishPendingDiscordEncounters,
+  webhookKey,
   type PendingEncounter,
 } from "./encounter-feed";
 
 const WEBHOOK = "https://discord.test/api/webhooks/123/secret-token";
+const WEBHOOK_B = "https://discord.test/api/webhooks/456/other-secret";
+const KEY = webhookKey(WEBHOOK);
+const KEY_B = webhookKey(WEBHOOK_B);
 
 const kill: PendingEncounter = {
   id: "00000000-0000-0000-0000-000000000002",
@@ -40,30 +45,47 @@ const older: PendingEncounter = {
 };
 
 const noSleep = async () => undefined;
+const mark = (id: string, key: string) => `${id}|${key}`;
 
 // In-memory stand-in for the pool: enough SQL awareness to answer the lock,
-// the pending query (oldest first, skipping posted rows) and the mark insert.
-function fakeDb(encounters: PendingEncounter[], options: { posted?: string[]; lockHeld?: boolean; failMark?: boolean; failConnect?: boolean } = {}) {
+// the per-webhook bootstrap, the pending query (oldest first, skipping posted
+// rows) and the mark insert.
+function fakeDb(
+  encounters: PendingEncounter[],
+  options: { posted?: string[]; knownWebhooks?: string[]; lockHeld?: boolean; failMark?: boolean; failConnect?: boolean } = {},
+) {
   const posted = new Set(options.posted ?? []);
+  const known = new Set(options.knownWebhooks ?? []);
   const sql: string[] = [];
-  const state = { released: 0, unlocked: 0 };
+  const state = { released: 0, unlocked: 0, bootstraps: 0 };
   const client = {
     async query(text: string, values: unknown[] = []) {
       sql.push(text);
+      if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return { rows: [], rowCount: null };
       if (text.includes("pg_try_advisory_lock")) return { rows: [{ locked: !options.lockHeld }], rowCount: 1 };
       if (text.includes("pg_advisory_unlock")) { state.unlocked += 1; return { rows: [{}], rowCount: 1 }; }
-      if (text.includes("FROM bounty_encounters")) {
+      if (text.includes("INSERT INTO discord_feed_webhooks")) {
+        const key = String(values[0]);
+        if (known.has(key)) return { rows: [], rowCount: 0 };
+        known.add(key);
+        state.bootstraps += 1;
+        let n = 0;
+        for (const row of encounters) if (!posted.has(mark(row.id, key))) { posted.add(mark(row.id, key)); n += 1; }
+        return { rows: [{ n }], rowCount: 1 };
+      }
+      if (text.includes("FROM bounty_encounters e")) {
+        const key = String(values[0]);
         const rows = encounters
-          .filter((row) => !posted.has(row.id))
+          .filter((row) => !posted.has(mark(row.id, key)))
           .sort((a, b) => new Date(a.event_at).getTime() - new Date(b.event_at).getTime() || a.id.localeCompare(b.id))
-          .slice(0, Number(values[0]));
+          .slice(0, Number(values[1]));
         return { rows, rowCount: rows.length };
       }
       if (text.includes("INSERT INTO discord_encounter_posts")) {
         if (options.failMark) throw new Error("database unavailable");
-        const id = String(values[0]);
-        const inserted = !posted.has(id);
-        posted.add(id);
+        const entry = mark(String(values[0]), String(values[1]));
+        const inserted = !posted.has(entry);
+        posted.add(entry);
         return { rows: [], rowCount: inserted ? 1 : 0 };
       }
       throw new Error(`Unexpected SQL in fake pool: ${text}`);
@@ -76,19 +98,26 @@ function fakeDb(encounters: PendingEncounter[], options: { posted?: string[]; lo
       return client;
     },
   } as unknown as Pick<Pool, "connect">;
-  return { db, posted, sql, state };
+  return { db, posted, known, sql, state };
 }
 
-function fakeFetch(statuses: Array<number | Error> = []) {
+function fakeFetch(statuses: Record<string, Array<number | Error>> | Array<number | Error> = []) {
   const calls: { url: string; init: RequestInit; payload: ReturnType<typeof formatEncounterPayload> }[] = [];
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-    const outcome = statuses[calls.length] ?? 204;
-    calls.push({ url: String(url), init: init ?? {}, payload: JSON.parse(String(init?.body)) });
+    const target = String(url);
+    const perUrl = calls.filter((call) => call.url === target).length;
+    const queue = Array.isArray(statuses) ? statuses : statuses[target] ?? [];
+    const outcome = queue[Array.isArray(statuses) ? calls.length : perUrl] ?? 204;
+    calls.push({ url: target, init: init ?? {}, payload: JSON.parse(String(init?.body)) });
     if (outcome instanceof Error) throw outcome;
     return new Response(null, { status: outcome });
   }) as typeof fetch;
   return { fetchImpl, calls };
 }
+
+const titles = (calls: { payload: ReturnType<typeof formatEncounterPayload> }[]) => calls.map((call) => call.payload.embeds[0].title);
+// A webhook already bootstrapped, so the fake behaves like a live feed.
+const live = { knownWebhooks: [KEY] };
 
 // Keep test output quiet; individual tests re-spy to assert on calls.
 beforeEach(() => {
@@ -96,6 +125,27 @@ beforeEach(() => {
   vi.spyOn(log, "warn").mockImplementation(() => undefined);
 });
 afterEach(() => vi.restoreAllMocks());
+
+describe("parseWebhookList", () => {
+  it("splits on commas, whitespace and newlines, trims, dedupes and keeps order", () => {
+    const parsed = parseWebhookList(` ${WEBHOOK}, ${WEBHOOK_B}\n${WEBHOOK} ,,  `);
+    expect(parsed.map((item) => item.url)).toEqual([WEBHOOK, WEBHOOK_B]);
+    expect(parsed.map((item) => item.key)).toEqual([KEY, KEY_B]);
+  });
+
+  it("yields nothing for unset or blank values", () => {
+    expect(parseWebhookList(undefined)).toEqual([]);
+    expect(parseWebhookList("")).toEqual([]);
+    expect(parseWebhookList("  , \n ")).toEqual([]);
+  });
+
+  it("derives a stable short key that does not reveal the URL", () => {
+    expect(webhookKey(WEBHOOK)).toBe(KEY);
+    expect(KEY).toMatch(/^[0-9a-f]{16}$/);
+    expect(WEBHOOK).not.toContain(KEY);
+    expect(KEY).not.toBe(KEY_B);
+  });
+});
 
 describe("formatEncounterPayload", () => {
   it("formats a collected bounty as a green embed with a thousands-separated payout", () => {
@@ -138,13 +188,13 @@ describe("formatEncounterPayload", () => {
 });
 
 describe("publishPendingDiscordEncounters", () => {
-  it("is a clean no-op when the webhook is unset or blank", async () => {
+  it("is a clean no-op when the webhook list is unset or blank", async () => {
     vi.stubEnv("DISCORD_BOUNTY_WEBHOOK_URL", "");
     const { fetchImpl, calls } = fakeFetch();
     const connect = vi.fn();
     const db = { connect } as unknown as Pick<Pool, "connect">;
     expect(await publishPendingDiscordEncounters({ db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0, reason: "disabled" });
-    expect(await publishPendingDiscordEncounters({ webhook: "   ", db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0, reason: "disabled" });
+    expect(await publishPendingDiscordEncounters({ webhooks: " , ", db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0, reason: "disabled" });
     vi.unstubAllEnvs();
     delete process.env.DISCORD_BOUNTY_WEBHOOK_URL;
     expect(await publishPendingDiscordEncounters({ db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0, reason: "disabled" });
@@ -152,19 +202,40 @@ describe("publishPendingDiscordEncounters", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("bootstraps a webhook seen for the first time without posting the existing archive", async () => {
+    const { db, posted, known, state } = fakeDb([older, kill]);
+    const { fetchImpl, calls } = fakeFetch();
+    const info = vi.spyOn(log, "info");
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0 });
+    expect(calls).toHaveLength(0);
+    expect(known.has(KEY)).toBe(true);
+    expect(posted).toEqual(new Set([mark(older.id, KEY), mark(kill.id, KEY)]));
+    expect(info).toHaveBeenCalledWith("discord_bounty_bootstrapped", expect.objectContaining({ webhook_key: KEY, seeded_encounters: 2 }));
+    expect(JSON.stringify(info.mock.calls)).not.toContain("secret-token");
+
+    // Only encounters archived after the bootstrap are announced.
+    const { fetchImpl: laterFetch, calls: laterCalls } = fakeFetch();
+    const later = { ...failed };
+    const withNew = fakeDb([older, kill, later], { posted: [...posted], knownWebhooks: [...known] });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db: withNew.db, fetchImpl: laterFetch, sleep: noSleep })).toEqual({ posted: 1, remaining: 0 });
+    expect(titles(laterCalls)).toEqual([formatEncounterPayload(later).embeds[0].title]);
+    expect(withNew.state.bootstraps).toBe(0);
+    expect(state.bootstraps).toBe(1);
+  });
+
   it("marks an encounter posted only after Discord accepts it and logs without the webhook URL", async () => {
-    const { db, posted, state } = fakeDb([kill]);
+    const { db, posted, state } = fakeDb([kill], live);
     const { fetchImpl, calls } = fakeFetch([204]);
     const info = vi.spyOn(log, "info");
-    const result = await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep });
+    const result = await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep });
     expect(result).toEqual({ posted: 1, remaining: 0 });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(WEBHOOK);
     expect(calls[0].init.method).toBe("POST");
     expect(calls[0].payload).toEqual(formatEncounterPayload(kill));
-    expect(posted.has(kill.id)).toBe(true);
+    expect(posted.has(mark(kill.id, KEY))).toBe(true);
     expect(info).toHaveBeenCalledWith("discord_bounty_posted", expect.objectContaining({
-      encounter_id: kill.id, outcome: "KILL", event_at: "2026-09-17T12:47:00.000Z", status: "success",
+      encounter_id: kill.id, outcome: "KILL", event_at: "2026-09-17T12:47:00.000Z", status: "success", webhook_key: KEY,
     }));
     expect(JSON.stringify(info.mock.calls)).not.toContain("secret-token");
     expect(state.unlocked).toBe(1);
@@ -172,75 +243,107 @@ describe("publishPendingDiscordEncounters", () => {
   });
 
   it("leaves an encounter pending when Discord returns a failure", async () => {
-    const { db, posted } = fakeDb([kill]);
+    const { db, posted } = fakeDb([kill], live);
     const { fetchImpl } = fakeFetch([500]);
     const warn = vi.spyOn(log, "warn");
-    const result = await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep });
+    const result = await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep });
     expect(result).toEqual({ posted: 0, remaining: 1, reason: "delivery_failed" });
-    expect(posted.has(kill.id)).toBe(false);
+    expect(posted.has(mark(kill.id, KEY))).toBe(false);
     expect(warn).toHaveBeenCalledWith("discord_bounty_failed", expect.objectContaining({
-      encounter_id: kill.id, outcome: "KILL", http_status: 500, reason: "webhook_delivery_failed",
+      encounter_id: kill.id, outcome: "KILL", http_status: 500, reason: "webhook_delivery_failed", webhook_key: KEY,
     }));
     expect(JSON.stringify(warn.mock.calls)).not.toContain("secret-token");
   });
 
   it("leaves an encounter pending on a transient network error and retries it next cycle", async () => {
-    const { db, posted } = fakeDb([kill]);
+    const { db, posted } = fakeDb([kill], live);
     const flaky = fakeFetch([new TypeError("fetch failed")]);
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl: flaky.fetchImpl, sleep: noSleep })).toMatchObject({ posted: 0, reason: "delivery_failed" });
-    expect(posted.has(kill.id)).toBe(false);
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: flaky.fetchImpl, sleep: noSleep })).toMatchObject({ posted: 0, reason: "delivery_failed" });
+    expect(posted.has(mark(kill.id, KEY))).toBe(false);
 
     const healthy = fakeFetch([204]);
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl: healthy.fetchImpl, sleep: noSleep })).toEqual({ posted: 1, remaining: 0 });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: healthy.fetchImpl, sleep: noSleep })).toEqual({ posted: 1, remaining: 0 });
     expect(healthy.calls[0].payload).toEqual(formatEncounterPayload(kill));
-    expect(posted.has(kill.id)).toBe(true);
+    expect(posted.has(mark(kill.id, KEY))).toBe(true);
   });
 
   it("skips encounters that are already recorded as posted", async () => {
-    const { db, posted } = fakeDb([older, kill, failed], { posted: [older.id, kill.id] });
+    const { db, posted } = fakeDb([older, kill, failed], { ...live, posted: [mark(older.id, KEY), mark(kill.id, KEY)] });
     const { fetchImpl, calls } = fakeFetch();
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 1, remaining: 0 });
-    expect(calls.map((call) => call.payload.embeds[0].title)).toEqual([formatEncounterPayload(failed).embeds[0].title]);
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 1, remaining: 0 });
+    expect(titles(calls)).toEqual([formatEncounterPayload(failed).embeds[0].title]);
     expect(posted.size).toBe(3);
 
     const again = fakeFetch();
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl: again.fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0 });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: again.fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0 });
     expect(again.calls).toHaveLength(0);
   });
 
   it("delivers pending encounters oldest first regardless of storage order", async () => {
-    const { db, sql } = fakeDb([failed, kill, older]);
+    const { db, sql } = fakeDb([failed, kill, older], live);
     const { fetchImpl, calls } = fakeFetch();
-    await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep });
-    expect(calls.map((call) => call.payload.embeds[0].title)).toEqual([
-      formatEncounterPayload(older).embeds[0].title,
-      formatEncounterPayload(kill).embeds[0].title,
-      formatEncounterPayload(failed).embeds[0].title,
-    ]);
-    const pendingQuery = sql.find((text) => text.includes("FROM bounty_encounters"));
+    await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep });
+    expect(titles(calls)).toEqual([older, kill, failed].map((row) => formatEncounterPayload(row).embeds[0].title));
+    const pendingQuery = sql.find((text) => text.includes("SELECT e.id, e.event_at"));
     expect(pendingQuery?.replace(/\s+/g, " ")).toContain("ORDER BY e.event_at ASC, e.id ASC");
   });
 
   it("stops at the first failure so later encounters wait behind it", async () => {
-    const { db, posted } = fakeDb([older, kill, failed]);
+    const { db, posted } = fakeDb([older, kill, failed], live);
     const { fetchImpl, calls } = fakeFetch([204, 429]);
-    const result = await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep });
+    const result = await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep });
     expect(result).toEqual({ posted: 1, remaining: 2, reason: "delivery_failed" });
     expect(calls).toHaveLength(2);
-    expect([...posted]).toEqual([older.id]);
+    expect([...posted]).toEqual([mark(older.id, KEY)]);
   });
 
-  it("respects the per-cycle batch size", async () => {
-    const { db } = fakeDb([older, kill, failed]);
+  it("respects the per-webhook batch size", async () => {
+    const { db } = fakeDb([older, kill, failed], live);
     const { fetchImpl, calls } = fakeFetch();
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep, batchSize: 2 })).toEqual({ posted: 2, remaining: 0 });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep, batchSize: 2 })).toEqual({ posted: 2, remaining: 0 });
     expect(calls).toHaveLength(2);
+  });
+
+  it("posts to every configured webhook and tracks each one separately", async () => {
+    const { db, posted } = fakeDb([older, kill], { knownWebhooks: [KEY, KEY_B] });
+    const { fetchImpl, calls } = fakeFetch();
+    const result = await publishPendingDiscordEncounters({ webhooks: `${WEBHOOK},${WEBHOOK_B}`, db, fetchImpl, sleep: noSleep });
+    expect(result).toEqual({ posted: 4, remaining: 0 });
+    expect(calls.filter((call) => call.url === WEBHOOK).map((call) => call.payload.embeds[0].title)).toEqual([older, kill].map((row) => formatEncounterPayload(row).embeds[0].title));
+    expect(calls.filter((call) => call.url === WEBHOOK_B).map((call) => call.payload.embeds[0].title)).toEqual([older, kill].map((row) => formatEncounterPayload(row).embeds[0].title));
+    expect(posted).toEqual(new Set([mark(older.id, KEY), mark(kill.id, KEY), mark(older.id, KEY_B), mark(kill.id, KEY_B)]));
+  });
+
+  it("keeps delivering to healthy webhooks when one is down, and never re-posts to the healthy one", async () => {
+    const { db, posted } = fakeDb([older, kill], { knownWebhooks: [KEY, KEY_B] });
+    const down = fakeFetch({ [WEBHOOK]: [502, 502] });
+    const first = await publishPendingDiscordEncounters({ webhooks: `${WEBHOOK},${WEBHOOK_B}`, db, fetchImpl: down.fetchImpl, sleep: noSleep });
+    expect(first).toEqual({ posted: 2, remaining: 2, reason: "delivery_failed" });
+    expect(down.calls.filter((call) => call.url === WEBHOOK)).toHaveLength(1);
+    expect(down.calls.filter((call) => call.url === WEBHOOK_B)).toHaveLength(2);
+    expect(posted).toEqual(new Set([mark(older.id, KEY_B), mark(kill.id, KEY_B)]));
+
+    const recovered = fakeFetch();
+    const second = await publishPendingDiscordEncounters({ webhooks: `${WEBHOOK},${WEBHOOK_B}`, db, fetchImpl: recovered.fetchImpl, sleep: noSleep });
+    expect(second).toEqual({ posted: 2, remaining: 0 });
+    expect(recovered.calls.every((call) => call.url === WEBHOOK)).toBe(true);
+    expect(titles(recovered.calls)).toEqual([older, kill].map((row) => formatEncounterPayload(row).embeds[0].title));
+    expect(posted.size).toBe(4);
+  });
+
+  it("bootstraps a webhook added later without replaying the archive to it", async () => {
+    const { db, posted } = fakeDb([older, kill], { knownWebhooks: [KEY], posted: [mark(older.id, KEY), mark(kill.id, KEY)] });
+    const { fetchImpl, calls } = fakeFetch();
+    expect(await publishPendingDiscordEncounters({ webhooks: `${WEBHOOK},${WEBHOOK_B}`, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0 });
+    expect(calls).toHaveLength(0);
+    expect(posted.has(mark(older.id, KEY_B))).toBe(true);
+    expect(posted.has(mark(kill.id, KEY_B))).toBe(true);
   });
 
   it("skips the cycle when another publisher holds the advisory lock", async () => {
-    const { db, state } = fakeDb([kill], { lockHeld: true });
+    const { db, state } = fakeDb([kill], { ...live, lockHeld: true });
     const { fetchImpl, calls } = fakeFetch();
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0, reason: "locked" });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 0, remaining: 0, reason: "locked" });
     expect(calls).toHaveLength(0);
     expect(state.unlocked).toBe(0);
     expect(state.released).toBe(1);
@@ -248,11 +351,11 @@ describe("publishPendingDiscordEncounters", () => {
 
   it("never throws: database problems are logged and reported as publisher errors", async () => {
     const warn = vi.spyOn(log, "warn");
-    const offline = fakeDb([kill], { failConnect: true });
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db: offline.db, fetchImpl: fakeFetch().fetchImpl, sleep: noSleep }))
+    const offline = fakeDb([kill], { ...live, failConnect: true });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db: offline.db, fetchImpl: fakeFetch().fetchImpl, sleep: noSleep }))
       .toEqual({ posted: 0, remaining: 0, reason: "publisher_error" });
-    const markFails = fakeDb([kill], { failMark: true });
-    expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db: markFails.db, fetchImpl: fakeFetch().fetchImpl, sleep: noSleep }))
+    const markFails = fakeDb([kill], { ...live, failMark: true });
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db: markFails.db, fetchImpl: fakeFetch().fetchImpl, sleep: noSleep }))
       .toEqual({ posted: 0, remaining: 0, reason: "publisher_error" });
     expect(markFails.state.released).toBe(1);
     expect(markFails.state.unlocked).toBe(1);

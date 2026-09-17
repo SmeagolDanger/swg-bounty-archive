@@ -1,18 +1,25 @@
 # Live Discord encounter feed
 
-The worker can announce every newly archived bounty encounter in a Discord
-channel through a plain channel webhook. There is no gateway bot, queue, or
-extra service: PostgreSQL remains the source of truth and Discord is only a
-notification output.
+The worker can announce every newly archived bounty encounter in one or more
+Discord channels through plain channel webhooks. There is no gateway bot,
+queue, or extra service: PostgreSQL remains the source of truth and Discord is
+only a notification output.
 
 ## Configuration
 
-Set `DISCORD_BOUNTY_WEBHOOK_URL` in `.env.production` (Discord channel →
-**Integrations → Webhooks → New Webhook**). `docker-compose.prod.yml` passes it
-to the `worker` container; it is never read by browser code. Leaving it blank
-or unset disables the feed with no other effect. It is deliberately separate
-from `DISCORD_REPORT_WEBHOOK_URL` (weekly report) and
-`PARSER_REPORT_WEBHOOK_URL` (BattleTrace reports).
+Set `DISCORD_BOUNTY_WEBHOOK_URL` in `.env.production` to one or more webhook
+URLs separated by commas (Discord channel → **Integrations → Webhooks → New
+Webhook**). Each webhook belongs to one channel, so posting to several servers
+means one webhook per server:
+
+```
+DISCORD_BOUNTY_WEBHOOK_URL=https://discord.com/api/webhooks/…/…,https://discord.com/api/webhooks/…/…
+```
+
+`docker-compose.prod.yml` passes it to the `worker` container; it is never
+read by browser code. Leaving it blank or unset disables the feed with no
+other effect. It is deliberately separate from `DISCORD_REPORT_WEBHOOK_URL`
+(weekly report) and `PARSER_REPORT_WEBHOOK_URL` (BattleTrace reports).
 
 ## What gets posted
 
@@ -36,19 +43,32 @@ SWG Legends → runIngestion("POLL") → COMMIT → heartbeat → publishPending
 
 `publishPendingDiscordEncounters` (`src/lib/discord/encounter-feed.ts`) runs
 after every worker poll, outside `processBounty()` and outside the ingestion
-transaction. It selects encounters with no row in `discord_encounter_posts`,
-ordered `event_at ASC, id ASC`, posts them one at a time (at most 25 per cycle,
-spaced 500 ms apart to respect Discord's webhook rate limit), and inserts the
-tracking row only after Discord returns a 2xx.
+transaction. For each configured webhook it selects encounters with no row for
+that webhook in `discord_encounter_posts`, ordered `event_at ASC, id ASC`,
+posts them one at a time (at most 25 per webhook per cycle, spaced 500 ms
+apart to respect Discord's per-webhook rate limit), and inserts the tracking
+row only after Discord returns a 2xx.
+
+## Delivery tracking
+
+Each webhook is identified by `webhook_key`, the first 16 hex characters of the
+SHA-256 of its URL. The key is what gets stored and logged; the URL never is.
+Changing a webhook URL therefore counts as adding a new webhook.
+
+- `discord_feed_webhooks` has one row per key the worker has ever seen.
+- `discord_encounter_posts` has one row per `(encounter_id, webhook_key)` that
+  was delivered (or bootstrapped, see below).
 
 ## Retry and duplicate protection
 
-- A failed post (non-2xx, timeout, network error) is logged and the loop stops
-  for that cycle. The failed encounter and everything newer stay pending and
-  are retried on the next poll, so ordering is preserved and nothing is lost to
-  a transient outage. There are no retries within a cycle.
-- `discord_encounter_posts.encounter_id` is the primary key, so an encounter
-  can be marked at most once.
+- A failed post (non-2xx, timeout, network error) is logged and the loop for
+  that webhook stops for the cycle. The failed encounter and everything newer
+  stay pending for that webhook and are retried on the next poll, so ordering
+  is preserved and nothing is lost to a transient outage. Other webhooks are
+  unaffected and keep receiving posts. There are no retries within a cycle.
+- The composite primary key means an encounter can be marked at most once per
+  webhook, and a webhook that was down is never re-sent what a healthy one
+  already received.
 - A session-level advisory lock means overlapping publishers (for example the
   outgoing and incoming worker during a rolling restart) skip the cycle rather
   than double-post.
@@ -58,14 +78,21 @@ tracking row only after Discord returns a 2xx.
 
 ## Historical encounters
 
-Migration `0017_discord_encounter_posts.sql` creates the tracking table and, in
-the same transaction, inserts a row for every encounter already in the archive.
-Those encounters are therefore treated as already posted and are never sent.
-Only encounters archived after the migration ran are announced, so enabling
-the feed on an existing deployment does not flood the channel.
+The first time a webhook key is seen, the worker registers it in
+`discord_feed_webhooks` and, in the same transaction, records every encounter
+already in the archive as posted for that key before sending anything. Only
+encounters archived after that point are announced to it. This applies to the
+original webhook when upgrading past migration `0018`, and to every webhook
+added later, so adding a server never replays the archive into it.
+
+Migration `0017` performed the same seeding for the original single-webhook
+table; those rows are retained under the placeholder key `legacy` and are not
+consulted.
 
 ## Logging
 
+- `discord_bounty_bootstrapped` (info): a webhook key was seen for the first
+  time, with `seeded_encounters`.
 - `discord_bounty_posted` (info) and `discord_bounty_failed` (warn) carry
-  `encounter_id`, `outcome`, `event_at`, `http_status` where relevant, and
-  `remaining` (pending rows left in the batch). The webhook URL is never logged.
+  `webhook_key`, `encounter_id`, `outcome`, `event_at`, `http_status` where
+  relevant, and `remaining` (pending rows left in that webhook's batch).
