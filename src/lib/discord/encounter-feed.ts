@@ -40,6 +40,10 @@ export interface EncounterFeedPayload {
 
 export interface EncounterFeedDeps {
   webhooks?: string;          // raw DISCORD_BOUNTY_WEBHOOK_URL value
+  // Start of the poll that just ran. A webhook seen for the first time treats
+  // everything archived before this as history; encounters archived during
+  // the poll are still announced. Defaults to now.
+  archivedBefore?: Date;
   db?: Pick<Pool, "connect">;
   fetchImpl?: typeof fetch;
   batchSize?: number;
@@ -108,24 +112,26 @@ export function formatEncounterPayload(encounter: PendingEncounter): EncounterFe
 
 // ------------------------------------------------------------------ database
 
-// First sighting of a webhook: record every encounter that already exists as
-// posted for it, so a newly added server never receives the historical archive.
-// Returns the number of encounters seeded, or null when the key was already known.
-export async function bootstrapWebhook(client: Queryable, key: string): Promise<number | null> {
+// First sighting of a webhook: record every encounter archived before the
+// current poll began as posted for it, so a newly added server never receives
+// the historical archive but does get what this poll just found. Returns the
+// number of encounters seeded, or null when the key was already known.
+export async function bootstrapWebhook(client: Queryable, key: string, archivedBefore: Date): Promise<number | null> {
   await client.query("BEGIN");
   try {
     const seeded = await client.query<{ n: number }>(
       `WITH registered AS (
          INSERT INTO discord_feed_webhooks(webhook_key, bootstrapped_encounters)
-         VALUES($1, (SELECT count(*) FROM bounty_encounters))
+         VALUES($1, (SELECT count(*) FROM bounty_encounters WHERE first_observed_at < $2))
          ON CONFLICT (webhook_key) DO NOTHING RETURNING webhook_key
        ), seeded AS (
          INSERT INTO discord_encounter_posts(encounter_id, webhook_key)
          SELECT e.id, r.webhook_key FROM bounty_encounters e CROSS JOIN registered r
+         WHERE e.first_observed_at < $2
          ON CONFLICT (encounter_id, webhook_key) DO NOTHING RETURNING encounter_id
        )
        SELECT (SELECT count(*)::int FROM seeded) AS n WHERE EXISTS (SELECT 1 FROM registered)`,
-      [key],
+      [key, archivedBefore],
     );
     await client.query("COMMIT");
     return seeded.rows[0]?.n ?? null;
@@ -182,8 +188,8 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 
 interface Delivery { posted: number; remaining: number; failed: boolean }
 
-async function deliverToWebhook(client: Queryable, webhook: FeedWebhook, deps: Required<Pick<EncounterFeedDeps, "fetchImpl" | "batchSize" | "sleep">>): Promise<Delivery> {
-  const seeded = await bootstrapWebhook(client, webhook.key);
+async function deliverToWebhook(client: Queryable, webhook: FeedWebhook, deps: Required<Pick<EncounterFeedDeps, "archivedBefore" | "fetchImpl" | "batchSize" | "sleep">>): Promise<Delivery> {
+  const seeded = await bootstrapWebhook(client, webhook.key, deps.archivedBefore);
   if (seeded !== null) {
     log.info("discord_bounty_bootstrapped", {
       source: "discord_bounty_feed", status: "success", webhook_key: webhook.key, seeded_encounters: seeded,
@@ -219,6 +225,7 @@ export async function publishPendingDiscordEncounters(deps: EncounterFeedDeps = 
   const webhooks = parseWebhookList(deps.webhooks ?? process.env.DISCORD_BOUNTY_WEBHOOK_URL);
   if (webhooks.length === 0) return { posted: 0, remaining: 0, reason: "disabled" };
   const delivery = {
+    archivedBefore: deps.archivedBefore ?? new Date(),
     fetchImpl: deps.fetchImpl ?? fetch,
     batchSize: deps.batchSize ?? ENCOUNTER_FEED_BATCH_SIZE,
     sleep: deps.sleep ?? defaultSleep,

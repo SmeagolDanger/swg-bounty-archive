@@ -45,12 +45,13 @@ const older: PendingEncounter = {
 
 const noSleep = async () => undefined;
 const mark = (id: string, key: string) => `${id}|${key}`;
+type StoredEncounter = PendingEncounter & { first_observed_at?: Date };
 
 // In-memory stand-in for the pool: enough SQL awareness to answer the lock,
 // the per-webhook bootstrap, the pending query (oldest first, skipping posted
 // rows) and the mark insert.
 function fakeDb(
-  encounters: PendingEncounter[],
+  encounters: StoredEncounter[],
   options: { posted?: string[]; knownWebhooks?: string[]; lockHeld?: boolean; failMark?: boolean; failConnect?: boolean } = {},
 ) {
   const posted = new Set(options.posted ?? []);
@@ -65,11 +66,15 @@ function fakeDb(
       if (text.includes("pg_advisory_unlock")) { state.unlocked += 1; return { rows: [{}], rowCount: 1 }; }
       if (text.includes("INSERT INTO discord_feed_webhooks")) {
         const key = String(values[0]);
+        const cutoff = (values[1] as Date).getTime();
         if (known.has(key)) return { rows: [], rowCount: 0 };
         known.add(key);
         state.bootstraps += 1;
         let n = 0;
-        for (const row of encounters) if (!posted.has(mark(row.id, key))) { posted.add(mark(row.id, key)); n += 1; }
+        for (const row of encounters) {
+          if ((row.first_observed_at ?? new Date(0)).getTime() >= cutoff) continue;
+          if (!posted.has(mark(row.id, key))) { posted.add(mark(row.id, key)); n += 1; }
+        }
         return { rows: [{ n }], rowCount: 1 };
       }
       if (text.includes("FROM bounty_encounters e")) {
@@ -329,6 +334,22 @@ describe("publishPendingDiscordEncounters", () => {
     expect(recovered.calls.every((call) => call.url === WEBHOOK)).toBe(true);
     expect(titles(recovered.calls)).toEqual([older, kill].map((row) => formatEncounterPayload(row).embeds[0].title));
     expect(posted.size).toBe(4);
+  });
+
+  it("still announces encounters archived during the poll that first sees a webhook", async () => {
+    const cycleStartedAt = new Date("2026-09-17T22:49:42Z");
+    const archive: StoredEncounter[] = [
+      { ...older, first_observed_at: new Date("2026-09-17T11:05:00Z") },
+      { ...kill, first_observed_at: new Date("2026-09-17T22:49:43Z") },   // found by this poll
+      { ...failed, first_observed_at: new Date("2026-09-17T22:49:43Z") }, // found by this poll
+    ];
+    const { db, posted } = fakeDb(archive);
+    const { fetchImpl, calls } = fakeFetch();
+    const info = vi.spyOn(log, "info");
+    expect(await publishPendingDiscordEncounters({ webhooks: WEBHOOK, archivedBefore: cycleStartedAt, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 2, remaining: 0 });
+    expect(titles(calls)).toEqual([kill, failed].map((row) => formatEncounterPayload(row).embeds[0].title));
+    expect(info).toHaveBeenCalledWith("discord_bounty_bootstrapped", expect.objectContaining({ seeded_encounters: 1 }));
+    expect(posted).toEqual(new Set([mark(older.id, KEY), mark(kill.id, KEY), mark(failed.id, KEY)]));
   });
 
   it("bootstraps a webhook added later without replaying the archive to it", async () => {

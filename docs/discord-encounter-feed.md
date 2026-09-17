@@ -80,10 +80,11 @@ Changing a webhook URL therefore counts as adding a new webhook.
 
 The first time a webhook key is seen, the worker registers it in
 `discord_feed_webhooks` and, in the same transaction, records every encounter
-already in the archive as posted for that key before sending anything. Only
-encounters archived after that point are announced to it. This applies to the
-original webhook when upgrading past migration `0018`, and to every webhook
-added later, so adding a server never replays the archive into it.
+archived before the current poll began as posted for that key. Encounters the
+same poll just archived are still announced, so the first cycle after adding
+a webhook posts only that cycle's genuinely new encounters. This applies to
+the original webhook when upgrading past migration `0018`, and to every
+webhook added later, so adding a server never replays the archive into it.
 
 Migration `0017` performed the same seeding for the original single-webhook
 table; those rows are retained under the placeholder key `legacy` and are not

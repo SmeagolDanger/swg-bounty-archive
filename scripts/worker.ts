@@ -54,7 +54,7 @@ try {
         // Notification outputs run after the archive has committed and the
         // heartbeat has recorded the run. The encounter feed never throws, so
         // a Discord problem there cannot surface as an ingestion failure.
-        await publishPendingDiscordEncounters();
+        await publishPendingDiscordEncounters({ archivedBefore: new Date(cycleStartedAt) });
         await maybePostWeeklyReport();
       } catch (error) {
         await heartbeat("error", undefined, "FAILED").catch(() => undefined);

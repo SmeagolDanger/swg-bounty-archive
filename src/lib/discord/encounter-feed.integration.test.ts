@@ -86,21 +86,23 @@ suite("Discord encounter feed against the database", () => {
 
     // 2. First cycle with webhook A: bootstrap only, nothing sent.
     const bootstrap = capture();
-    expect(await publishPendingDiscordEncounters({ ...opts, webhooks: webhookA, fetchImpl: bootstrap.fetchImpl })).toEqual({ posted: 0, remaining: 0 });
+    expect(await publishPendingDiscordEncounters({ ...opts, webhooks: webhookA, archivedBefore: new Date(), fetchImpl: bootstrap.fetchImpl })).toEqual({ posted: 0, remaining: 0 });
     expect(bootstrap.calls).toHaveLength(0);
     const registered = await pool.query<{ bootstrapped_encounters: number }>("SELECT bootstrapped_encounters FROM discord_feed_webhooks WHERE webhook_key=$1", [keys[0]]);
     expect(registered.rows[0].bootstrapped_encounters).toBeGreaterThanOrEqual(1);
 
-    // 3. New encounters archived afterwards, stored newest-first on purpose.
+    // 3. New encounters archived by the next poll, stored newest-first on purpose.
+    const pollStartedAt = new Date();
     await ingestFixture(runId, "bounty_activity", "bounty", bountyPayload([
       { timestamp: "2026-09-17T12:52:00.000Z", outcome: "FAILED", hunterName: hunter, targetName: "Easton", credits: 0 },
       { timestamp: "2026-09-17T12:47:00.000Z", outcome: "KILL", hunterName: hunter, targetName: "Vulture", credits: 19_154 },
     ], "2026-09-17T12:55:00.000Z"), { case: `live-${suffix}` });
 
-    // 4. Webhook A receives the two new ones in event order; webhook B, seen for
-    //    the first time in this cycle, is bootstrapped and receives nothing.
+    // 4. Webhook A receives the two new ones in event order. Webhook B is seen
+    //    for the first time in this poll: it is bootstrapped with everything
+    //    archived before the poll began, and still receives the two new ones.
     const first = capture();
-    const result = await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, fetchImpl: first.fetchImpl });
+    const result = await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, archivedBefore: pollStartedAt, fetchImpl: first.fetchImpl });
     expect(result.reason).toBeUndefined();
     const toA = first.calls.filter((call) => call.url === webhookA && call.payload.embeds[0].title.includes(hunter));
     expect(toA.map((call) => [call.payload.embeds[0].title, call.payload.embeds[0].description, call.payload.embeds[0].timestamp])).toEqual([
@@ -108,7 +110,8 @@ suite("Discord encounter feed against the database", () => {
       [`${hunter} failed to collect on Easton`, "No payout", "2026-09-17T12:52:00.000Z"],
     ]);
     expect(first.calls.some((call) => call.payload.embeds[0].title.includes("Historical Target"))).toBe(false);
-    expect(first.calls.filter((call) => call.url === webhookB)).toHaveLength(0);
+    const toB = first.calls.filter((call) => call.url === webhookB && call.payload.embeds[0].title.includes(hunter));
+    expect(toB.map((call) => call.payload.embeds[0].title)).toEqual(toA.map((call) => call.payload.embeds[0].title));
 
     // 5. A later encounter reaches both webhooks; nothing is ever posted twice.
     await ingestFixture(runId, "bounty_activity", "bounty", bountyPayload(
@@ -116,13 +119,13 @@ suite("Discord encounter feed against the database", () => {
       "2026-09-17T13:12:00.000Z",
     ), { case: `later-${suffix}` });
     const second = capture();
-    expect(await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, fetchImpl: second.fetchImpl })).toEqual({ posted: 2, remaining: 0 });
+    expect(await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, archivedBefore: new Date(), fetchImpl: second.fetchImpl })).toEqual({ posted: 2, remaining: 0 });
     expect(second.calls.map((call) => [call.url, call.payload.embeds[0].title])).toEqual([
       [webhookA, `${hunter} collected on Both Servers`],
       [webhookB, `${hunter} collected on Both Servers`],
     ]);
     const third = capture();
-    expect(await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, fetchImpl: third.fetchImpl })).toEqual({ posted: 0, remaining: 0 });
+    expect(await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, archivedBefore: new Date(), fetchImpl: third.fetchImpl })).toEqual({ posted: 0, remaining: 0 });
     expect(third.calls).toHaveLength(0);
 
     const tracked = await pool.query<{ webhook_key: string; n: number }>(
