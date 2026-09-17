@@ -82,13 +82,13 @@ suite("Discord encounter feed against the database", () => {
     //    so assertions are scoped to this test's hunter.
     const first = await publishPendingDiscordEncounters({ webhook, db: pool, fetchImpl, sleep: async () => undefined, batchSize: 10_000 });
     expect(first.reason).toBeUndefined();
-    const mine = calls.filter((call) => call.payload.embeds[0].description.includes(hunter));
-    expect(mine.map((call) => call.payload.embeds[0].description)).toEqual([
-      `**${hunter} collected on Vulture**\n\n**19,154 cr** payout\n\n<t:1789649220:f>`,
-      `**${hunter} failed to collect on Easton**\n\nNo payout\n\n<t:1789649520:f>`,
+    const mine = calls.filter((call) => call.payload.embeds[0].title.includes(hunter));
+    expect(mine.map((call) => [call.payload.embeds[0].title, call.payload.embeds[0].description])).toEqual([
+      [`${hunter} collected on Vulture`, "**19,154 cr** payout\n<t:1789649220:f>"],
+      [`${hunter} failed to collect on Easton`, "No payout\n<t:1789649520:f>"],
     ]);
     expect(mine.every((call) => call.url === webhook)).toBe(true);
-    expect(calls.some((call) => call.payload.embeds[0].description.includes("Historical Target"))).toBe(false);
+    expect(calls.some((call) => call.payload.embeds[0].title.includes("Historical Target"))).toBe(false);
 
     const tracked = await pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM discord_encounter_posts p JOIN bounty_encounters e ON e.id=p.encounter_id WHERE e.hunter_name=$1`, [hunter],

@@ -20,13 +20,13 @@ One embed per encounter, built from the archived `bounty_encounters` row and
 the canonical `KILL` / `FAILED` outcome values. Names are used exactly as
 stored; mention parsing is disabled so a player name can never ping anyone.
 
-| Outcome  | Colour            | Description                                                   |
-|----------|-------------------|---------------------------------------------------------------|
-| `KILL`   | green `0x57F287`  | `**Hunter collected on Target**` / `**19,154 cr** payout`     |
-| `FAILED` | red `0xED4245`    | `**Hunter failed to collect on Target**` / `No payout`        |
+| Outcome  | Colour            | Title                               | Body first line          |
+|----------|-------------------|-------------------------------------|--------------------------|
+| `KILL`   | green `0x57F287`  | `Hunter collected on Target`        | `**19,154 cr** payout`   |
+| `FAILED` | red `0xED4245`    | `Hunter failed to collect on Target`| `No payout`              |
 
-The last line is a Discord-native `<t:UNIX:f>` timestamp of the encounter's
-`event_at`, so every reader sees it in their own timezone.
+The body's second line is a Discord-native `<t:UNIX:f>` timestamp of the
+encounter's `event_at`, so every reader sees it in their own timezone.
 
 ## When messages are sent
 

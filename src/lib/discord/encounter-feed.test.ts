@@ -103,18 +103,16 @@ describe("formatEncounterPayload", () => {
     expect(payload.embeds).toHaveLength(1);
     expect(payload.embeds[0].color).toBe(ENCOUNTER_FEED_COLORS.KILL);
     expect(payload.embeds[0].color).toBe(0x57f287);
-    expect(payload.embeds[0].description).toBe(
-      "**Yesrem collected on Vulture**\n\n**19,154 cr** payout\n\n<t:1789649220:f>",
-    );
+    expect(payload.embeds[0].title).toBe("Yesrem collected on Vulture");
+    expect(payload.embeds[0].description).toBe("**19,154 cr** payout\n<t:1789649220:f>");
   });
 
   it("formats a failed bounty as a red embed that says No payout", () => {
     const payload = formatEncounterPayload(failed);
     expect(payload.embeds[0].color).toBe(ENCOUNTER_FEED_COLORS.FAILED);
     expect(payload.embeds[0].color).toBe(0xed4245);
-    expect(payload.embeds[0].description).toBe(
-      "**Yesrem failed to collect on Easton**\n\nNo payout\n\n<t:1789649520:f>",
-    );
+    expect(payload.embeds[0].title).toBe("Yesrem failed to collect on Easton");
+    expect(payload.embeds[0].description).toBe("No payout\n<t:1789649520:f>");
     expect(payload.embeds[0].description).not.toContain("cr");
   });
 
@@ -135,7 +133,7 @@ describe("formatEncounterPayload", () => {
   it("disables mention parsing and preserves names exactly as stored", () => {
     const payload = formatEncounterPayload({ ...kill, hunter_name: "Dar'k Hun-ter", target_name: "@everyone" });
     expect(payload.allowed_mentions).toEqual({ parse: [] });
-    expect(payload.embeds[0].description).toContain("**Dar'k Hun-ter collected on @everyone**");
+    expect(payload.embeds[0].title).toBe("Dar'k Hun-ter collected on @everyone");
   });
 });
 
@@ -202,7 +200,7 @@ describe("publishPendingDiscordEncounters", () => {
     const { db, posted } = fakeDb([older, kill, failed], { posted: [older.id, kill.id] });
     const { fetchImpl, calls } = fakeFetch();
     expect(await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep })).toEqual({ posted: 1, remaining: 0 });
-    expect(calls.map((call) => call.payload.embeds[0].description)).toEqual([formatEncounterPayload(failed).embeds[0].description]);
+    expect(calls.map((call) => call.payload.embeds[0].title)).toEqual([formatEncounterPayload(failed).embeds[0].title]);
     expect(posted.size).toBe(3);
 
     const again = fakeFetch();
@@ -214,10 +212,10 @@ describe("publishPendingDiscordEncounters", () => {
     const { db, sql } = fakeDb([failed, kill, older]);
     const { fetchImpl, calls } = fakeFetch();
     await publishPendingDiscordEncounters({ webhook: WEBHOOK, db, fetchImpl, sleep: noSleep });
-    expect(calls.map((call) => call.payload.embeds[0].description)).toEqual([
-      formatEncounterPayload(older).embeds[0].description,
-      formatEncounterPayload(kill).embeds[0].description,
-      formatEncounterPayload(failed).embeds[0].description,
+    expect(calls.map((call) => call.payload.embeds[0].title)).toEqual([
+      formatEncounterPayload(older).embeds[0].title,
+      formatEncounterPayload(kill).embeds[0].title,
+      formatEncounterPayload(failed).embeds[0].title,
     ]);
     const pendingQuery = sql.find((text) => text.includes("FROM bounty_encounters"));
     expect(pendingQuery?.replace(/\s+/g, " ")).toContain("ORDER BY e.event_at ASC, e.id ASC");

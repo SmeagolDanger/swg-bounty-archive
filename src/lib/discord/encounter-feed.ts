@@ -28,7 +28,7 @@ export interface PendingEncounter {
 
 export interface EncounterFeedPayload {
   allowed_mentions: { parse: never[] };
-  embeds: Array<{ color: number; description: string }>;
+  embeds: Array<{ color: number; title: string; description: string }>;
 }
 
 export interface EncounterFeedDeps {
@@ -68,15 +68,18 @@ export function discordTimestamp(value: Date | string): string {
 export function formatEncounterPayload(encounter: PendingEncounter): EncounterFeedPayload {
   const collected = encounter.outcome === "KILL";
   const headline = collected
-    ? `**${encounter.hunter_name} collected on ${encounter.target_name}**`
-    : `**${encounter.hunter_name} failed to collect on ${encounter.target_name}**`;
+    ? `${encounter.hunter_name} collected on ${encounter.target_name}`
+    : `${encounter.hunter_name} failed to collect on ${encounter.target_name}`;
   const payout = collected ? `**${formatCredits(encounter.credits)} cr** payout` : "No payout";
   return {
     // No mention parsing: a player name must never ping the channel.
     allowed_mentions: { parse: [] },
+    // Title + a two-line body keeps the card compact: Discord adds its own
+    // small gap under the title, so no blank lines are needed.
     embeds: [{
       color: collected ? ENCOUNTER_FEED_COLORS.KILL : ENCOUNTER_FEED_COLORS.FAILED,
-      description: `${headline}\n\n${payout}\n\n${discordTimestamp(encounter.event_at)}`,
+      title: headline,
+      description: `${payout}\n${discordTimestamp(encounter.event_at)}`,
     }],
   };
 }
