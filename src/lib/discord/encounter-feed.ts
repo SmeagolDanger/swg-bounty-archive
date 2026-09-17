@@ -35,7 +35,7 @@ export interface FeedWebhook {
 
 export interface EncounterFeedPayload {
   allowed_mentions: { parse: never[] };
-  embeds: Array<{ color: number; title: string; description: string }>;
+  embeds: Array<{ color: number; title: string; description: string; timestamp: string }>;
 }
 
 export interface EncounterFeedDeps {
@@ -85,11 +85,6 @@ export function formatCredits(credits: number | string): string {
   return Number(credits).toLocaleString("en-US");
 }
 
-// <t:UNIX:f> lets Discord render the encounter time in each reader's timezone.
-export function discordTimestamp(value: Date | string): string {
-  return `<t:${Math.floor(new Date(value).getTime() / 1000)}:f>`;
-}
-
 export function formatEncounterPayload(encounter: PendingEncounter): EncounterFeedPayload {
   const collected = encounter.outcome === "KILL";
   const headline = collected
@@ -99,12 +94,14 @@ export function formatEncounterPayload(encounter: PendingEncounter): EncounterFe
   return {
     // No mention parsing: a player name must never ping the channel.
     allowed_mentions: { parse: [] },
-    // Title + a two-line body keeps the card compact: Discord adds its own
-    // small gap under the title, so no blank lines are needed.
+    // Title, one-line body, and the encounter time as the embed timestamp,
+    // which Discord renders in the footer in each reader's local time
+    // ("Today at 12:47 PM").
     embeds: [{
       color: collected ? ENCOUNTER_FEED_COLORS.KILL : ENCOUNTER_FEED_COLORS.FAILED,
       title: headline,
-      description: `${payout}\n${discordTimestamp(encounter.event_at)}`,
+      description: payout,
+      timestamp: new Date(encounter.event_at).toISOString(),
     }],
   };
 }

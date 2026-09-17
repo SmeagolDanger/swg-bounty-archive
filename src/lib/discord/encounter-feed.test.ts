@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { log } from "@/lib/observability/logger";
 import {
   ENCOUNTER_FEED_COLORS,
-  discordTimestamp,
   formatCredits,
   formatEncounterPayload,
   parseWebhookList,
@@ -154,7 +153,8 @@ describe("formatEncounterPayload", () => {
     expect(payload.embeds[0].color).toBe(ENCOUNTER_FEED_COLORS.KILL);
     expect(payload.embeds[0].color).toBe(0x57f287);
     expect(payload.embeds[0].title).toBe("Yesrem collected on Vulture");
-    expect(payload.embeds[0].description).toBe("**19,154 cr** payout\n<t:1789649220:f>");
+    expect(payload.embeds[0].description).toBe("**19,154 cr** payout");
+    expect(payload.embeds[0].timestamp).toBe("2026-09-17T12:47:00.000Z");
   });
 
   it("formats a failed bounty as a red embed that says No payout", () => {
@@ -162,7 +162,8 @@ describe("formatEncounterPayload", () => {
     expect(payload.embeds[0].color).toBe(ENCOUNTER_FEED_COLORS.FAILED);
     expect(payload.embeds[0].color).toBe(0xed4245);
     expect(payload.embeds[0].title).toBe("Yesrem failed to collect on Easton");
-    expect(payload.embeds[0].description).toBe("No payout\n<t:1789649520:f>");
+    expect(payload.embeds[0].description).toBe("No payout");
+    expect(payload.embeds[0].timestamp).toBe("2026-09-17T12:52:00.000Z");
     expect(payload.embeds[0].description).not.toContain("cr");
   });
 
@@ -173,11 +174,10 @@ describe("formatEncounterPayload", () => {
     expect(formatEncounterPayload(older).embeds[0].description).toContain("**1,250,000 cr** payout");
   });
 
-  it("uses a Discord-native timestamp derived from the encounter's event_at", () => {
-    expect(discordTimestamp(new Date("2026-09-17T12:47:00Z"))).toBe("<t:1789649220:f>");
-    expect(discordTimestamp("2026-09-17T12:47:00.999Z")).toBe("<t:1789649220:f>");
-    const stamp = Math.floor(new Date(kill.event_at).getTime() / 1000);
-    expect(formatEncounterPayload(kill).embeds[0].description.endsWith(`<t:${stamp}:f>`)).toBe(true);
+  it("uses the encounter's event_at as the embed timestamp, whether a Date or an ISO string", () => {
+    expect(formatEncounterPayload(kill).embeds[0].timestamp).toBe(new Date(kill.event_at).toISOString());
+    expect(formatEncounterPayload(failed).embeds[0].timestamp).toBe("2026-09-17T12:52:00.000Z");
+    expect(formatEncounterPayload({ ...kill, event_at: "2026-09-17T12:47:00.999Z" }).embeds[0].timestamp).toBe("2026-09-17T12:47:00.999Z");
   });
 
   it("disables mention parsing and preserves names exactly as stored", () => {

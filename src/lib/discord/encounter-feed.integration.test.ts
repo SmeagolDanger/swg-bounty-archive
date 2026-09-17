@@ -103,9 +103,9 @@ suite("Discord encounter feed against the database", () => {
     const result = await publishPendingDiscordEncounters({ ...opts, webhooks: `${webhookA},${webhookB}`, fetchImpl: first.fetchImpl });
     expect(result.reason).toBeUndefined();
     const toA = first.calls.filter((call) => call.url === webhookA && call.payload.embeds[0].title.includes(hunter));
-    expect(toA.map((call) => [call.payload.embeds[0].title, call.payload.embeds[0].description])).toEqual([
-      [`${hunter} collected on Vulture`, "**19,154 cr** payout\n<t:1789649220:f>"],
-      [`${hunter} failed to collect on Easton`, "No payout\n<t:1789649520:f>"],
+    expect(toA.map((call) => [call.payload.embeds[0].title, call.payload.embeds[0].description, call.payload.embeds[0].timestamp])).toEqual([
+      [`${hunter} collected on Vulture`, "**19,154 cr** payout", "2026-09-17T12:47:00.000Z"],
+      [`${hunter} failed to collect on Easton`, "No payout", "2026-09-17T12:52:00.000Z"],
     ]);
     expect(first.calls.some((call) => call.payload.embeds[0].title.includes("Historical Target"))).toBe(false);
     expect(first.calls.filter((call) => call.url === webhookB)).toHaveLength(0);
