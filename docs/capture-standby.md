@@ -42,7 +42,7 @@ after:   npm run ingest:replay --since <outage start> ▶ captures → archive (
    ```bash
    npm install
    npx wrangler r2 bucket create swg-bounty-captures
-   npx wrangler r2 bucket lifecycle add swg-bounty-captures --prefix captures/ --expire-days 90
+   npx wrangler r2 bucket lifecycle add swg-bounty-captures expire-captures --prefix captures/ --expire-days 90
    openssl rand -hex 32 | npx wrangler secret put CAPTURE_TOKEN
    npm run deploy
    ```
