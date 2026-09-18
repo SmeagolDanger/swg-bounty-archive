@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "swg-bounty-capture",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-01",
+  // Every minute: cheap (one R2 read) and lets the standby take over within
+  // a minute of the primary going quiet. It only fetches SWG Legends when the
+  // primary's heartbeat is stale, so in normal operation it never touches
+  // the source or its cache.
+  "triggers": { "crons": ["* * * * *"] },
+  "r2_buckets": [{ "binding": "CAPTURES", "bucket_name": "swg-bounty-captures" }],
+  "vars": {
+    "SWG_BASE_URL": "https://swglegends.com",
+    "STALE_AFTER_SECONDS": "360"
+  },
+  "observability": { "enabled": true }
+  // Secrets (wrangler secret put): CAPTURE_TOKEN
+}

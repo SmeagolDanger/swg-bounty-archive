@@ -6,3 +6,4 @@ coverage
 backups/*.dump
 backups/data
 npm-debug.log*
+cloudflare

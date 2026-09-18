@@ -1,0 +1,15 @@
+{
+  "name": "swg-bounty-capture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "typecheck": "wrangler types && tsc --noEmit",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "wrangler": "^4.135.0"
+  }
+}

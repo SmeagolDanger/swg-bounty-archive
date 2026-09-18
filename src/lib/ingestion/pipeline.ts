@@ -738,6 +738,16 @@ export async function runIngestion(runType: RunType = "ONCE", periods: readonly 
   }
 }
 
+// Replays a bounty payload the Cloudflare standby captured while the primary
+// collector was down. The capture time becomes the observation time, so
+// first_observed_at reflects when the data was actually seen, not the replay.
+export async function ingestCapture(runId: string, payload: unknown, capturedAt: Date, captureKey: string): Promise<Counters> {
+  return archiveAndProcess(runId, { sourceKey: "bounty_activity", path: "/api/game/bounty-hunting", parameters: { capture: captureKey }, processor: "bounty" }, {
+    status: 200, headers: { "content-type": "application/json", "x-standby-capture": captureKey }, payload,
+    requestedAt: capturedAt, receivedAt: capturedAt, durationMs: 0,
+  });
+}
+
 export async function ingestFixture(runId: string, sourceKey: SourceKey, processor: Processor, payload: unknown, parameters: Record<string, string> = {}): Promise<Counters> {
   const now = new Date();
   return archiveAndProcess(runId, { sourceKey, path: `/fixture/${sourceKey}`, parameters, processor }, {

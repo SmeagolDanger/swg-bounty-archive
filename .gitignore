@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -49,3 +49,8 @@ next-env.d.ts
 
 # Local IDE workspace files
 *.code-workspace
+
+# Cloudflare Worker local secrets
+.dev.vars
+.wrangler/
+worker-configuration.d.ts

@@ -131,6 +131,7 @@ See [.env.example](.env.example). Important controls:
 - `PARSER_REPORT_WEBHOOK_URL`: optional Discord webhook for BattleTrace parser reports (`POST /api/parser-reports`). The URL stays server-side; leaving it blank disables the endpoint with `503`.
 - `DISCORD_BOUNTY_WEBHOOK_URL`: optional comma-separated Discord webhook URL(s) for the live bounty encounter feed, one per server or channel. The worker posts each newly archived encounter once per webhook, oldest first, after the poll that archived it; blank disables the feed. A webhook never receives encounters archived before it was added. See [docs/discord-encounter-feed.md](docs/discord-encounter-feed.md).
 - `HEALTH_WORKER_STALE_SECONDS`: public health staleness threshold, default 900 seconds.
+- `CAPTURE_STANDBY_URL` / `CAPTURE_STANDBY_TOKEN`: optional Cloudflare standby capture Worker. The worker heartbeats it after each successful bounty poll; when heartbeats stop, the Worker captures the feed itself and `npm run ingest:replay` fills the gap afterwards. See [docs/capture-standby.md](docs/capture-standby.md).
 
 No real credentials belong in source control.
 
@@ -139,6 +140,8 @@ The `--env` form prints a complete, paste-ready assignment. Keep its single quot
 ## Backfill limitations
 
 SWG Legends publicly exposes only `CURRENT`, `PREVIOUS_1`, and `PREVIOUS_2` board periods. The encounter feed exposes a rolling 14-day aggregate but only 12 recent event rows and no pagination. The software backfills everything the public API actually permits and explicitly does not manufacture inaccessible history. Continuous collection grows the permanent event archive from deployment onward.
+
+Because of that 12-row window, an outage of the collector would normally lose encounters for good. The optional [Cloudflare standby capture](docs/capture-standby.md) closes that gap: a Worker idles while the collector heartbeats, captures the feed on its own when heartbeats stop, and `npm run ingest:replay` ingests the captures afterwards.
 
 ## Backup and restore
 

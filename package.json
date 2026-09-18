@@ -19,6 +19,7 @@
     "ingest:backfill": "tsx scripts/backfill.ts",
     "ingest:reconcile": "tsx scripts/reconcile.ts",
     "ingest:validate": "tsx scripts/validate-data.ts",
+    "ingest:replay": "tsx scripts/replay-captures.ts",
     "worker": "tsx scripts/worker.ts",
     "admin:hash-password": "tsx scripts/hash-password.ts",
     "discord:register": "tsx scripts/discord-register-commands.ts",

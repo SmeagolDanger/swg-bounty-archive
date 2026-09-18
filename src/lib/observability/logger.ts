@@ -23,6 +23,8 @@ export type ObservabilityEvent =
   | "discord_bounty_posted"
   | "discord_bounty_failed"
   | "discord_bounty_bootstrapped"
+  | "capture_heartbeat_failed"
+  | "capture_replay_complete"
   | "discord_interaction_answered"
   | "discord_interaction_failed"
   | "discord_interaction_rejected"

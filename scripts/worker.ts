@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { pool } from "../src/lib/db/client";
+import { sendCaptureHeartbeat } from "../src/lib/capture/heartbeat";
 import { runIngestion } from "../src/lib/ingestion/pipeline";
 import { publishPendingDiscordEncounters } from "../src/lib/discord/encounter-feed";
 import { maybePostWeeklyReport } from "../src/lib/discord/weekly-post";
@@ -34,6 +35,15 @@ async function heartbeat(status: string, runId?: string, runStatus?: string): Pr
   await writeFile("/tmp/worker-healthy", new Date().toISOString(), "utf8");
 }
 
+async function bountyArchived(runId: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT 1 FROM api_ingestions i JOIN api_sources s ON s.id=i.source_id
+     WHERE i.run_id=$1 AND s.source_key='bounty_activity' AND i.processing_status='PROCESSED' LIMIT 1`,
+    [runId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 async function wait(ms: number): Promise<void> {
   const step = 1_000;
   for (let elapsed = 0; elapsed < ms && !stopping; elapsed += step) {
@@ -54,6 +64,10 @@ try {
         await heartbeat("collecting");
         const result = await runIngestion("POLL");
         await heartbeat("idle", result.runId, result.status);
+        // Tell the Cloudflare standby the bounty feed was archived this run,
+        // so it keeps idling. Anything else in the run may have failed; only
+        // the bounty source matters to the standby.
+        if (await bountyArchived(result.runId)) await sendCaptureHeartbeat();
         // Notification outputs run after the archive has committed and the
         // heartbeat has recorded the run. The encounter feed never throws, so
         // a Discord problem there cannot surface as an ingestion failure.

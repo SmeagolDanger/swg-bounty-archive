@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Cloudflare Worker build artefacts and generated runtime types.
+    "cloudflare/**/.wrangler/**",
+    "cloudflare/**/worker-configuration.d.ts",
   ]),
 ]);
 

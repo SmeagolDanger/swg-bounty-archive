@@ -113,6 +113,10 @@ Outer Rim Ledger emits sanitized structured JSON logs to Docker stdout/stderr an
 
 Follow [monitoring.md](monitoring.md) to create the Events dataset and scoped ingest token, configure APL monitors and a native Discord notifier, test delivery safely, and retain `/api/health` as an independent provider-neutral check. Leave both `AXIOM_TOKEN` and `AXIOM_DATASET` blank to disable hosted delivery.
 
+## Optional standby capture
+
+The collector's only unrecoverable failure is a long outage, because the source keeps just 12 recent encounters. [capture-standby.md](capture-standby.md) describes a free Cloudflare Worker that captures the feed while the collector is silent and a replay command that fills the gap afterwards. Set `CAPTURE_STANDBY_URL` and `CAPTURE_STANDBY_TOKEN` in `.env.production` to enable the heartbeat.
+
 ## 5. Routine production updates
 
 The image workflow publishes `latest` from `main`, immutable `sha-<commit>` tags, and semantic-version tags. To update using the configured tag:
