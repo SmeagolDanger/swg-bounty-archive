@@ -402,6 +402,21 @@ export async function getHunterDirectory(filters: HunterDirectoryFilters = {}) {
   return { rows: rows.rows, total: count.rows[0].count as number, page, pageSize, summary: summary.rows[0] };
 }
 
+// Webhooks that were added or delivered a post in the last seven days, so a
+// removed or dead webhook ages out of the count on its own.
+const ACTIVE_DISCORD_FEEDS_SQL = `(SELECT count(*)::int FROM discord_feed_webhooks w
+  WHERE greatest(w.first_seen_at, (SELECT max(p.posted_at) FROM discord_encounter_posts p WHERE p.webhook_key = w.webhook_key)) > now() - interval '7 days')`;
+
+// Shown in the site's top bar on every page, so it must never throw.
+export async function getDiscordFeedCount(): Promise<number> {
+  try {
+    const result = await pool.query<{ n: number }>(`SELECT ${ACTIVE_DISCORD_FEEDS_SQL} AS n`);
+    return result.rows[0]?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function getArchiveStats() {
   const [summary, topHunters, topTargets, outcomes] = await Promise.all([
     pool.query(`SELECT
@@ -415,8 +430,7 @@ export async function getArchiveStats() {
       ${countBountyParticipants("city")} AS cities,
       (SELECT min(event_at) FROM bounty_encounters) AS history_start,
       (SELECT max(event_at) FROM bounty_encounters) AS history_end,
-      (SELECT count(*)::int FROM discord_feed_webhooks w
-        WHERE greatest(w.first_seen_at, (SELECT max(p.posted_at) FROM discord_encounter_posts p WHERE p.webhook_key = w.webhook_key)) > now() - interval '7 days') AS discord_feeds`),
+      ${ACTIVE_DISCORD_FEEDS_SQL} AS discord_feeds`),
     pool.query(`SELECT min(be.hunter_name) AS hunter_name,count(*)::int AS encounters,count(*) FILTER(WHERE be.outcome='KILL')::int AS wins,
       count(*) FILTER(WHERE be.outcome='FAILED')::int AS losses,coalesce(sum(be.credits) FILTER(WHERE be.outcome='KILL'),0)::float8 AS credits,
       player.id AS participant_id

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import type { Viewport } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Exo_2, JetBrains_Mono, Rajdhani } from "next/font/google";
+import { FeedCount } from "@/components/feed-count";
 import { GlobalSearch } from "@/components/global-search";
 import { MobileNavigation } from "@/components/mobile-nav";
 import { NavLinks } from "@/components/nav-links";
@@ -30,7 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <div className="scanlines" aria-hidden="true" />
-        <div className="support-bar"><span>☕ Enjoying Jawa Tracks?</span><a href={SUPPORT_URL} target="_blank" rel="noreferrer">Buy me a coffee ↗</a></div>
+        <div className="support-bar"><div className="shell support-bar-inner">
+          <Suspense fallback={null}><FeedCount /></Suspense>
+          <span className="support-cta"><span>☕ Enjoying Jawa Tracks?</span><a href={SUPPORT_URL} target="_blank" rel="noreferrer">Buy me a coffee ↗</a></span>
+        </div></div>
         <header className="site-header">
           <div className="shell nav-shell">
             <Link href="/" className="brand" aria-label="Jawa Tracks home">
