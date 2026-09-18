@@ -22,6 +22,9 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 const nav = [["Encounters", "/"], ["Hunters", "/hunters"], ["Guilds", "/guilds"], ["Reports", "/reports/weekly"], ["Raw data", "/raw-data"], ["Compare", "/compare"]] as const;
 
+const SUPPORT_URL = "https://buymeacoffee.com/chickenrat";
+const SupportLink = () => <a className="support-link" href={SUPPORT_URL} target="_blank" rel="noreferrer">☕ Buy me a coffee</a>;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
@@ -34,13 +37,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="brand-mark">JT</span>
               <span><b>Jawa Tracks</b><small>Outer Rim Ledger // public archive</small></span>
             </Link>
-            <nav className="desktop-nav" aria-label="Primary navigation"><NavLinks links={nav} /></nav>
+            <nav className="desktop-nav" aria-label="Primary navigation"><NavLinks links={nav} /><SupportLink /></nav>
             <div className="desktop-search"><GlobalSearch /></div>
             <MobileNavigation>
               <summary><span className="menu-icon" aria-hidden="true"><i/><i/><i/></span><span>Menu</span></summary>
               <div className="mobile-menu">
                 <GlobalSearch />
-                <nav aria-label="Mobile navigation"><NavLinks links={nav} withArrow /></nav>
+                <nav aria-label="Mobile navigation"><NavLinks links={nav} withArrow /><SupportLink /></nav>
               </div>
             </MobileNavigation>
           </div>
