@@ -159,7 +159,7 @@ DATABASE_URL=... RESTORE_CONFIRM=YES npm run restore -- /absolute/path/to/backup
 npm run ingest:validate
 ```
 
-Schedule `npm run backup` daily with the host's systemd timer or cron, copy dumps to independent storage, and regularly test restoration into a separate PostgreSQL database.
+In production the `backup` compose service does all of this unattended: a nightly dump, verification, upload to Cloudflare R2, retention, and a weekly restore drill into a throwaway database. See [docs/backups.md](docs/backups.md). `npm run backup:cycle` runs one cycle by hand and `npm run backup:drill` runs the restore test.
 
 For the pull-only GHCR production stack and a lossless development-to-VPS transfer procedure, follow [docs/production-deployment.md](docs/production-deployment.md). It includes a pre/post migration manifest whose counts and content digests must match before the production worker starts.
 

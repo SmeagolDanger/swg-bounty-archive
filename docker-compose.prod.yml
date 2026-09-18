@@ -31,6 +31,16 @@ x-app-env: &app-env
   PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-}
   BACKUP_DIR: /backups
   BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-0}
+  R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+  R2_BACKUP_BUCKET: ${R2_BACKUP_BUCKET:-swg-bounty-backups}
+  BACKUP_AT: ${BACKUP_AT:-03:15}
+  BACKUP_LOCAL_RETENTION_DAYS: ${BACKUP_LOCAL_RETENTION_DAYS:-7}
+  BACKUP_R2_DAILY_RETENTION_DAYS: ${BACKUP_R2_DAILY_RETENTION_DAYS:-30}
+  BACKUP_RESTORE_DRILL_DAY: ${BACKUP_RESTORE_DRILL_DAY:-Sun}
+  BACKUP_HEALTHCHECK_URL: ${BACKUP_HEALTHCHECK_URL:-}
+  BACKUP_DISCORD_WEBHOOK_URL: ${BACKUP_DISCORD_WEBHOOK_URL:-}
 
 services:
   postgres:
@@ -86,6 +96,23 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/worker-healthy && find /tmp/worker-healthy -mmin -10 | grep -q ."]
       interval: 30s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  backup:
+    <<: *app-image
+    command: bash backups/scheduler.sh
+    environment: *app-env
+    volumes:
+      - ${BACKUP_PATH:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/backup-scheduler-alive && find /tmp/backup-scheduler-alive -mmin -5 | grep -q ."]
+      interval: 60s
       timeout: 5s
       retries: 5
     stop_grace_period: 30s

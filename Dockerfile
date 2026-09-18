@@ -16,7 +16,8 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 LABEL org.opencontainers.image.source="https://github.com/SmeagolDanger/swg-bounty-archive"
 LABEL org.opencontainers.image.description="Outer Rim Ledger SWG Legends Bounty Hunter archive"
 # chromium renders the weekly report share card for Discord posts
-RUN apk add --no-cache postgresql-client bash curl chromium nss freetype harfbuzz ttf-freefont ca-certificates
+# rclone ships nightly database backups to Cloudflare R2 (backups/r2.sh)
+RUN apk add --no-cache postgresql-client bash curl rclone chromium nss freetype harfbuzz ttf-freefont ca-certificates
 COPY --from=builder /app ./
 EXPOSE 3000
 CMD ["npm", "run", "start"]

@@ -139,6 +139,6 @@ Create a production backup at any time:
 docker compose --env-file .env.production -f docker-compose.prod.yml run --rm db-tools
 ```
 
-Copy both `.dump` and `.dump.sha256` files to independent storage. Schedule this command daily and periodically restore into a disposable database to prove recovery.
+The `backup` service does this every night on its own: dump, verify, upload to Cloudflare R2, prune, and a weekly restore drill. Set the `R2_*` variables in `.env.production` and, ideally, `BACKUP_HEALTHCHECK_URL` so a missed night alerts you. Details and the recovery procedure are in [backups.md](backups.md).
 
 `docker compose down` preserves the named PostgreSQL volume. **Never run `docker compose down -v`** unless permanent deletion of the production database is explicitly intended. Never rely on the named volume as the only backup.
