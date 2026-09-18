@@ -22,7 +22,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://swg:swg@postgres:5432/swg_bounty}
       SWG_BASE_URL: https://swglegends.com
       INGESTION_ENABLED: "true"
-      INGESTION_INTERVAL_SECONDS: "300"
+      INGESTION_INTERVAL_SECONDS: ${INGESTION_INTERVAL_SECONDS:-310}
       INGESTION_CONCURRENCY: "2"
       INGESTION_TIMEOUT_MS: "10000"
       INGESTION_MAX_RETRIES: "3"

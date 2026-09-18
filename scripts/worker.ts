@@ -6,8 +6,11 @@ import { maybePostWeeklyReport } from "../src/lib/discord/weekly-post";
 import { axiomConfigured, flushAxiom } from "../src/lib/observability/axiom";
 import { errorLogContext, log } from "../src/lib/observability/logger";
 
-const configuredInterval = Number(process.env.INGESTION_INTERVAL_SECONDS ?? 300);
-const intervalSeconds = Number.isFinite(configuredInterval) ? Math.max(60, configuredInterval) : 300;
+// 310 rather than 300: SWG Legends serves the bounty feed from a 300 s
+// on-demand cache, so an exact 300 s cadence lands just before expiry on every
+// other poll and receives a five-minute-old snapshot (see docs/swg-legends-api.md).
+const configuredInterval = Number(process.env.INGESTION_INTERVAL_SECONDS ?? 310);
+const intervalSeconds = Number.isFinite(configuredInterval) ? Math.max(60, configuredInterval) : 310;
 const intervalMs = intervalSeconds * 1_000;
 let stopping = false;
 

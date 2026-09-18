@@ -118,7 +118,7 @@ See [.env.example](.env.example). Important controls:
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`: local database bootstrap settings. PostgreSQL binds to loopback only by default.
 - `SWG_BASE_URL`: source origin; defaults to the official site.
 - `INGESTION_ENABLED`: worker on/off switch.
-- `INGESTION_INTERVAL_SECONDS`: full poll interval, minimum 60 seconds.
+- `INGESTION_INTERVAL_SECONDS`: full poll interval, start to start, minimum 60 seconds. Default 310 rather than 300: the SWG Legends bounty feed is served from a 300-second on-demand cache, and an exact 300-second cadence lands just before expiry on every other poll and receives a five-minute-old snapshot. See [docs/swg-legends-api.md](docs/swg-legends-api.md).
 - `INGESTION_CONCURRENCY`: bounded request concurrency, capped at four.
 - `INGESTION_TIMEOUT_MS` / `INGESTION_MAX_RETRIES`: request resilience.
 - `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH`: protected operations console.

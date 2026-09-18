@@ -6,7 +6,9 @@ Investigation date: 2026-08-12 UTC. Source: the public [SWG Legends leaderboards
 
 The site is a Vue client served by Express with server-rendered/dehydrated query data. Its JSON endpoints are same-origin under `/api`. The leaderboards page bundle calls exactly four relevant read-only GET shapes. No GraphQL, WebSocket, SSE, Next.js data endpoint, server action, character profile endpoint, encounter-detail endpoint, or public pagination parameter is used for Bounty Hunter data.
 
-Responses currently carry `Cache-Control: public, max-age=60`. The client applies a 10 minute stale time to the bounty activity aggregate, 15 minutes to the board catalog, 5 minutes to leaderboard rows, and 30 minutes to wins. Those client values are UI cache behavior, not a server update guarantee. This archive defaults to a conservative five-minute cycle and honors `Retry-After` if returned.
+Responses currently carry `Cache-Control: public, max-age=60`. The client applies a 10 minute stale time to the bounty activity aggregate, 15 minutes to the board catalog, 5 minutes to leaderboard rows, and 30 minutes to wins. Those client values are UI cache behavior, not a server update guarantee. This archive defaults to a conservative 310-second cycle and honors `Retry-After` if returned.
+
+Measured behaviour of the bounty endpoint (September 2026, three days of polls): the payload `fetchedAt` lags our request by either about 0 s or about 299 s in near-equal numbers, with a thin even spread between. That is a server-side cache with a 300-second lifetime rebuilt on demand by whichever client asks first, not a wall-clock schedule. Polling at exactly 300 s start-to-start races that lifetime and loses every other time, so the default cadence is 310 s: each request lands after the previous snapshot has expired and, in quiet periods, always triggers a fresh build. Aligning polls to clock boundaries would not help.
 
 ### `GET /api/game/leaderboards`
 

@@ -34,7 +34,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml ps
 curl -fsS http://127.0.0.1:3017/api/health
 ```
 
-The one-shot `migrate` service must finish successfully before `web` or `worker` starts. The collector runs on a five-minute start-to-start cadence.
+The one-shot `migrate` service must finish successfully before `web` or `worker` starts. The collector runs on a 310-second start-to-start cadence by default (`INGESTION_INTERVAL_SECONDS`; see [swg-legends-api.md](swg-legends-api.md) for why it is not exactly five minutes).
 
 ## 3. Preserve and transfer the development archive
 
