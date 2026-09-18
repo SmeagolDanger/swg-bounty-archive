@@ -167,130 +167,89 @@ The result should include `event`, `status`, `service`, and `environment`. If `e
 
 ## Recommended monitors
 
-**Alert editor queries:** These are the queries to use for alerts. Create them under **Monitors → New monitor** and attach the Discord notifier described below. Paste each complete dataset-qualified query into the advanced APL editor, including the opening `['outer-rim-ledger-production']` line. Do not add `order by`, `take`, `summarize`, or any other operator to a Match Monitor; only `where`, `project`, `extend`, and `parse` are accepted. Threshold monitor queries must end with `summarize`.
+Every alert-worthy event carries two extra fields set by the application
+(`classifyAlert` in `src/lib/observability/logger.ts`): `alert`, a stable
+name, and `alert_summary`, one readable line built from the event's fields
+after redaction. That lets a single match monitor page for everything while
+staying inside the free plan's monitor limit, and adding a new alert type is a
+code change rather than a new monitor.
 
-`No events in time range` is an expected preview result when the selected interval contains no failure of that type; it is not a query error. Expand the preview range only if you expect an older matching event. After saving the monitors, use the synthetic events under **Safe testing and operations** to verify delivery without altering archive data.
+| `alert` | Fires on | Typical cause |
+|---|---|---|
+| `ingestion_failed` | a run finished `failed` | source unreachable, database down |
+| `ingestion_partial` | a run finished `partial` | one source failed or failed integrity checks |
+| `worker_cycle_aborted` | the worker loop caught an unexpected error | database outage mid-cycle |
+| `database_failure` | any archive or audit write failed | connection loss, disk full |
+| `source_changed` | schema signature or field set changed | SWG Legends changed its API |
+| `pagination_incomplete` | declared pagination ended early | source-side change |
+| `discord_webhook_rejected` | encounter feed got a 4xx other than 429 | webhook deleted or revoked in Discord |
+| `discord_feed_error` | the feed publisher itself threw | database problem during delivery |
+| `weekly_report_failed` | weekly report render or post failed | Chromium or webhook problem |
+| `discord_bot_error` | a slash command query failed | database problem |
+| `standby_unreachable` | heartbeat to the Cloudflare standby failed | Worker or network problem (standby will take over) |
+| `replay_failed` | `npm run ingest:replay` failed | bad token, Worker down |
+| `monitoring_test` | the synthetic event under *Safe testing* | you |
+| any other `error`-level event name | unclassified errors (catch-all) | investigate |
 
-[Match monitors](https://axiom.co/docs/monitor-data/match-monitors) continuously filter new events and send one notification for each match. They do not have frequency or range settings. Axiom currently limits each match monitor to 10 notifications per minute and 500 per day. The `project` clauses below deliberately keep Discord messages compact, while `column_ifexists()` safely handles optional fields that may not exist until the first event of that failure type arrives.
+Per-source failures inside a run (`source_validation_failed`, `api_*`,
+`source_processing_failed` for one source) are deliberately not alerts; the
+run's own `ingestion_run_complete` covers them once. Transient Discord
+delivery failures (429, 5xx, network) are not alerts either because the feed
+retries them on the next cycle.
 
-### Ingestion failed
+Create these under **Monitors → New monitor** and attach the Discord notifier
+described below. Paste each dataset-qualified query into the advanced APL
+editor. Match monitors accept only `where`, `project`, `extend` and `parse`;
+threshold monitor queries must end with `summarize`. `No events in time range`
+is an expected preview result when nothing recently matched.
 
-- Type: match monitor
+### 1. Application alerts (match monitor)
+
+- Name: `jawatracks-alert`
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | where event == 'ingestion_run_complete' and status == 'failed'
-  | extend expected_count=tolong(expected_records), received_count=tolong(received_records)
-  | extend missing_count=max_of(expected_count - received_count, 0)
+  | where isnotempty(tostring(column_ifexists('alert', '')))
   | project _time,
-      source,
-      run_id,
-      status,
-      reason=tostring(column_ifexists('reason', '')),
-      expected_records=expected_count,
-      received_records=received_count,
-      missing_records=missing_count,
-      rejected_records,
-      failed_sources,
-      error_message=tostring(column_ifexists('error_message', ''))
-  ```
-- Notification behavior: once for every matching failed run
-
-### Ingestion partial
-
-- Type: match monitor
-- Query:
-  ```apl
-  ['outer-rim-ledger-production']
-  | where event == 'ingestion_run_complete' and status == 'partial'
-  | extend expected_count=tolong(expected_records), received_count=tolong(received_records)
-  | extend missing_count=max_of(expected_count - received_count, 0)
-  | project _time,
-      source,
-      run_id,
-      status,
-      reason=tostring(column_ifexists('reason', '')),
-      expected_records=expected_count,
-      received_records=received_count,
-      missing_records=missing_count,
-      rejected_records,
-      partial_sources,
-      failed_sources
-  ```
-- Notification behavior: once for every matching partial run
-
-### Source/schema changed
-
-- Type: match monitor
-- Query:
-  ```apl
-  ['outer-rim-ledger-production']
-  | where event in ('source_schema_changed', 'source_fields_changed')
-  | project _time,
-      event,
-      source,
-      run_id,
+      alert,
+      alert_summary,
+      source=tostring(column_ifexists('source', '')),
+      run_id=tostring(column_ifexists('run_id', '')),
       status=tostring(column_ifexists('status', '')),
-      missing_fields=tostring(column_ifexists('missing_fields', '[]')),
-      unexpected_fields=tostring(column_ifexists('unexpected_fields', '[]')),
-      changed_types=tostring(column_ifexists('changed_types', '[]')),
-      message=tostring(column_ifexists('message', ''))
-  ```
-- Notification behavior: once for every matching source/schema change
-
-### Pagination incomplete
-
-- Type: match monitor
-- Query:
-  ```apl
-  ['outer-rim-ledger-production']
-  | where event == 'pagination_incomplete'
-  | extend expected_count=tolong(expected_records), received_count=tolong(received_records)
-  | extend missing_count=max_of(expected_count - received_count, 0)
-  | project _time,
-      source,
-      run_id,
-      status,
-      reason=tostring(column_ifexists('reason', 'pagination_incomplete')),
-      expected_records=expected_count,
-      received_records=received_count,
-      missing_records=missing_count
-  ```
-- Notification behavior: once for every matching pagination failure
-
-### Database failure
-
-- Type: match monitor
-- Query:
-  ```apl
-  ['outer-rim-ledger-production']
-  | where event == 'database_transaction_failed'
-  | project _time,
-      source,
-      run_id,
-      ingestion_id=tostring(column_ifexists('ingestion_id', '')),
       reason=tostring(column_ifexists('reason', '')),
+      http_status=tostring(column_ifexists('http_status', '')),
       error_type=tostring(column_ifexists('error_type', '')),
       error_message=tostring(column_ifexists('error_message', ''))
   ```
-- Notification behavior: once for every matching database failure
+- Notification behavior: once per matching event. Axiom caps match monitors at
+  10 notifications per minute and 500 per day, which is why per-source and
+  transient events are excluded above.
 
-### No successful ingestion within the expected interval
+### 2. No successful ingestion within the expected interval (threshold monitor)
 
-- Type: [threshold monitor](https://axiom.co/docs/monitor-data/threshold-monitors)
+The application cannot log its own absence, so this stays a separate
+[threshold monitor](https://axiom.co/docs/monitor-data/threshold-monitors).
+
 - Query:
   ```apl
   ['outer-rim-ledger-production']
-  | where event == 'ingestion_run_complete'
-  | summarize successful_runs=countif(status == 'success')
+  | summarize successful_runs=countif(event == 'ingestion_run_complete' and status == 'success')
   ```
 - Operator/threshold: below `1`
-- Frequency/range: every `5` minutes over `10` minutes
+- Frequency/range: every `5` minutes over `15` minutes (the poll cadence is 310 s)
 - Alert on no data: on
 
-For per-source staleness, use the same settings with `event == 'ingestion_complete'`, summarize `countif(status == 'success') by source`, and enable **Notify by group**. The public `/api/health` endpoint remains an independent provider-neutral check for web, database, worker-failure, and worker-staleness state.
+### 3. Spare
 
-After enough history exists, add anomaly monitors for unusually high `duplicate_records` and unusually low `received_records`, grouped by `source` in five-minute bins. Add match monitors for `api_rate_limited` and for `ingestion_complete` where `rejected_records > 0`. Baseline these warnings before paging because unchanged snapshots legitimately produce duplicates.
+Keep the third slot free, or use it for per-source staleness: the same
+threshold settings with `event == 'ingestion_complete'`, summarize
+`countif(status == 'success') by source`, and **Notify by group** enabled. The
+public `/api/health` endpoint remains an independent provider-neutral check for
+web, database, worker-failure and worker-staleness state, and is what an
+external uptime monitor should watch.
+
+The earlier per-type match monitors (failed, partial, schema, pagination,
+database) are superseded by monitor 1 and can be deleted.
 
 ## Discord notifier
 
@@ -314,7 +273,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec worker
   ./node_modules/.bin/tsx -e 'import { log } from "./src/lib/observability/logger.ts"; import { flushAxiom } from "./src/lib/observability/axiom.ts"; void (async () => { log.error("source_processing_failed", {source:"monitoring_test",status:"failed",reason:"manual_test"}); await flushAxiom(); })();'
 ```
 
-Use a temporary match monitor for `source == 'monitoring_test'`, confirm Discord delivery, then delete the monitor. Do not test by changing or deleting production archive data.
+That event is classified as `alert=monitoring_test`, so the `jawatracks-alert` monitor delivers it to Discord without any temporary monitor. Do not test by changing or deleting production archive data.
 
 To test the production failed-ingestion match monitor end to end, intentionally emit a synthetic event with the same event contract. This triggers the alert but does not create or modify an ingestion run:
 
