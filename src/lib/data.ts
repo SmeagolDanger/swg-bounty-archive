@@ -414,7 +414,9 @@ export async function getArchiveStats() {
       ${countBountyParticipants("guild")} AS guilds,
       ${countBountyParticipants("city")} AS cities,
       (SELECT min(event_at) FROM bounty_encounters) AS history_start,
-      (SELECT max(event_at) FROM bounty_encounters) AS history_end`),
+      (SELECT max(event_at) FROM bounty_encounters) AS history_end,
+      (SELECT count(*)::int FROM discord_feed_webhooks w
+        WHERE greatest(w.first_seen_at, (SELECT max(p.posted_at) FROM discord_encounter_posts p WHERE p.webhook_key = w.webhook_key)) > now() - interval '7 days') AS discord_feeds`),
     pool.query(`SELECT min(be.hunter_name) AS hunter_name,count(*)::int AS encounters,count(*) FILTER(WHERE be.outcome='KILL')::int AS wins,
       count(*) FILTER(WHERE be.outcome='FAILED')::int AS losses,coalesce(sum(be.credits) FILTER(WHERE be.outcome='KILL'),0)::float8 AS credits,
       player.id AS participant_id

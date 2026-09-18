@@ -90,6 +90,13 @@ Migration `0017` performed the same seeding for the original single-webhook
 table; those rows are retained under the placeholder key `legacy` and are not
 consulted.
 
+## Visibility
+
+The archive statistics page (`/stats`) shows "Discord hunt feeds": the number
+of webhooks that were added or delivered a post within the last seven days. A
+webhook removed from the configuration, or one whose Discord side was deleted,
+drops out of the count after a week without deliveries.
+
 ## Logging
 
 - `discord_bounty_bootstrapped` (info): a webhook key was seen for the first
