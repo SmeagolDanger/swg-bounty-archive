@@ -211,8 +211,8 @@ is an expected preview result when nothing recently matched.
   ['outer-rim-ledger-production']
   | where isnotempty(tostring(column_ifexists('alert', '')))
   | project _time,
-      alert,
-      alert_summary,
+      alert=tostring(column_ifexists('alert', '')),
+      alert_summary=tostring(column_ifexists('alert_summary', '')),
       source=tostring(column_ifexists('source', '')),
       run_id=tostring(column_ifexists('run_id', '')),
       status=tostring(column_ifexists('status', '')),
@@ -221,6 +221,7 @@ is an expected preview result when nothing recently matched.
       error_type=tostring(column_ifexists('error_type', '')),
       error_message=tostring(column_ifexists('error_message', ''))
   ```
+- Every field goes through `column_ifexists()` because APL rejects a bare column the dataset has never seen; `alert` only exists once the first alert-worthy (or synthetic test) event has been ingested.
 - Notification behavior: once per matching event. Axiom caps match monitors at
   10 notifications per minute and 500 per day, which is why per-source and
   transient events are excluded above.
