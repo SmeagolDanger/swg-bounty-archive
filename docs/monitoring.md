@@ -187,6 +187,8 @@ code change rather than a new monitor.
 | `weekly_report_failed` | weekly report render or post failed | Chromium or webhook problem |
 | `discord_bot_error` | a slash command query failed | database problem |
 | `standby_unreachable` | heartbeat to the Cloudflare standby failed | Worker or network problem (standby will take over) |
+| `discord_feed_backlog` | an encounter has waited over an hour for a webhook | Discord outage or a webhook failing every cycle; at most hourly per webhook |
+| `host_disk_low` | free space on the container root below 10% or 2 GB | logs, dumps or the database filling the disk; checked hourly |
 | `replay_failed` | `npm run ingest:replay` failed | bad token, Worker down |
 | `monitoring_test` | the synthetic event under *Safe testing* | you |
 | any other `error`-level event name | unclassified errors (catch-all) | investigate |

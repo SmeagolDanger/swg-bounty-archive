@@ -3,6 +3,8 @@
 export const CAPTURE_PREFIX = "captures/";
 export const HEARTBEAT_KEY = "state/heartbeat.json";
 export const LATEST_KEY = "state/latest.json";
+export const ALERT_KEY = "state/alerts.json";
+export const FAILURE_ALERT_INTERVAL_SECONDS = 3600;
 export const DEFAULT_STALE_AFTER_SECONDS = 360;
 // Mirrors the primary's cadence during a takeover; the source caches for 300 s.
 export const MIN_CAPTURE_GAP_SECONDS = 290;
@@ -73,4 +75,74 @@ export function tokenMatches(presented: string | null, expected: string): boolea
 // A payload is worth keeping only if it looks like the bounty feed.
 export function looksLikeBountyPayload(value: unknown): value is { recent: unknown[]; fetchedAt?: string } {
   return typeof value === "object" && value !== null && Array.isArray((value as { recent?: unknown }).recent);
+}
+
+// ---------------------------------------------------------------- alerting
+//
+// Optional Discord notifications (ALERT_WEBHOOK_URL secret): one message when
+// the standby takes over, one when the primary is back (with the replay
+// command), and at most one per hour while the standby's own captures fail.
+
+export interface AlertState {
+  takeoverAt: string | null;          // set while the primary is considered down
+  lastFailureAlertAt: string | null;
+  capturesDuringTakeover: number;
+}
+
+export interface CaptureResult { stored: boolean; key: string | null; reason: string }
+
+export interface AlertEmbed { color: number; title: string; description: string }
+
+export const EMPTY_ALERT_STATE: AlertState = { takeoverAt: null, lastFailureAlertAt: null, capturesDuringTakeover: 0 };
+const RED = 0xed4245, GREEN = 0x57f287, AMBER = 0xffaa00;
+
+export function nextAlertState(input: {
+  state: AlertState;
+  decision: StandbyDecision;
+  outcome: CaptureResult | null;
+  heartbeatAt: Date | null;
+  now: Date;
+}): { state: AlertState; messages: AlertEmbed[] } {
+  const { now } = input;
+  const state: AlertState = { ...input.state };
+  const messages: AlertEmbed[] = [];
+  const primaryDown = input.decision.reason !== "primary_healthy";
+  const fmt = (date: Date | string | null) => (date ? `<t:${Math.floor(new Date(date).getTime() / 1000)}:f>` : "never");
+
+  if (primaryDown && !state.takeoverAt) {
+    state.takeoverAt = now.toISOString();
+    state.capturesDuringTakeover = 0;
+    messages.push({
+      color: RED,
+      title: "Jawa Tracks collector is silent — standby capturing",
+      description: `Last heartbeat: ${fmt(input.heartbeatAt)}.\nThe Cloudflare standby is now capturing the bounty feed every ~5 minutes so nothing is lost. Check the VPS: \`dc ps\`, \`dc logs --since 30m worker\`.`,
+    });
+  }
+  if (input.outcome?.stored) state.capturesDuringTakeover += 1;
+
+  if (!primaryDown && state.takeoverAt) {
+    const since = state.takeoverAt;
+    messages.push({
+      color: GREEN,
+      title: "Jawa Tracks collector is back",
+      description: `Silent from ${fmt(since)} to ${fmt(now)}; standby stored ${state.capturesDuringTakeover} capture(s).\nReplay them into the archive:\n\`\`\`\ndc exec worker npm run ingest:replay -- --since ${since}\n\`\`\``,
+    });
+    state.takeoverAt = null;
+    state.lastFailureAlertAt = null;
+    state.capturesDuringTakeover = 0;
+  }
+
+  const failed = input.outcome && !input.outcome.stored && input.outcome.reason !== "unchanged";
+  if (failed && primaryDown) {
+    const last = state.lastFailureAlertAt ? new Date(state.lastFailureAlertAt).getTime() : 0;
+    if (now.getTime() - last >= FAILURE_ALERT_INTERVAL_SECONDS * 1000) {
+      state.lastFailureAlertAt = now.toISOString();
+      messages.push({
+        color: AMBER,
+        title: "Standby capture is failing",
+        description: `The standby could not capture the bounty feed (reason: \`${input.outcome!.reason}\`). While this persists, encounters older than the source's 12-row window are being lost. Get the primary collector back as soon as possible.`,
+      });
+    }
+  }
+  return { state, messages };
 }

@@ -77,6 +77,12 @@ function fakeDb(
         }
         return { rows: [{ n }], rowCount: 1 };
       }
+      if (text.includes("AS pending")) {
+        const key = String(values[0]);
+        const pending = encounters.filter((row) => !posted.has(mark(row.id, key)));
+        const oldest = pending.map((row) => row.first_observed_at ?? new Date()).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+        return { rows: [{ pending: pending.length, oldest_pending_at: oldest }], rowCount: 1 };
+      }
       if (text.includes("FROM bounty_encounters e")) {
         const key = String(values[0]);
         const rows = encounters
@@ -359,6 +365,31 @@ describe("publishPendingDiscordEncounters", () => {
     expect(calls).toHaveLength(0);
     expect(posted.has(mark(older.id, KEY_B))).toBe(true);
     expect(posted.has(mark(kill.id, KEY_B))).toBe(true);
+  });
+
+  it("raises a backlog alert once per hour when a webhook has been failing for over an hour", async () => {
+    const now = new Date("2026-09-19T12:00:00Z");
+    const archive: StoredEncounter[] = [{ ...kill, first_observed_at: new Date("2026-09-19T10:30:00Z") }];
+    const { db } = fakeDb(archive, live);
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const alerts = new Map<string, number>();
+    const down = fakeFetch([502]);
+    await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: down.fetchImpl, sleep: noSleep, now: () => now, backlogAlerts: alerts });
+    expect(warn).toHaveBeenCalledWith("discord_feed_backlog", expect.objectContaining({ webhook_key: KEY, pending: 1, oldest_pending_at: "2026-09-19T10:30:00.000Z" }));
+    warn.mockClear();
+    await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: fakeFetch([502]).fetchImpl, sleep: noSleep, now: () => new Date(now.getTime() + 5 * 60_000), backlogAlerts: alerts });
+    expect(warn.mock.calls.filter(([event]) => event === "discord_feed_backlog")).toHaveLength(0);
+    await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: fakeFetch([502]).fetchImpl, sleep: noSleep, now: () => new Date(now.getTime() + 61 * 60_000), backlogAlerts: alerts });
+    expect(warn.mock.calls.filter(([event]) => event === "discord_feed_backlog")).toHaveLength(1);
+  });
+
+  it("does not raise a backlog alert for fresh pending encounters or transient hiccups", async () => {
+    const now = new Date("2026-09-19T12:00:00Z");
+    const archive: StoredEncounter[] = [{ ...kill, first_observed_at: new Date("2026-09-19T11:50:00Z") }];
+    const { db } = fakeDb(archive, live);
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    await publishPendingDiscordEncounters({ webhooks: WEBHOOK, db, fetchImpl: fakeFetch([502]).fetchImpl, sleep: noSleep, now: () => now, backlogAlerts: new Map() });
+    expect(warn.mock.calls.filter(([event]) => event === "discord_feed_backlog")).toHaveLength(0);
   });
 
   it("skips the cycle when another publisher holds the advisory lock", async () => {

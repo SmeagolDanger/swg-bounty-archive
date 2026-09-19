@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import type React from "react";
-import { BOARD_LABELS, GCW_BOARD_FACTIONS, GCW_BOARD_LABELS, getParticipant } from "@/lib/data";
-import { EncounterList } from "./encounter-list";
+import { BOARD_LABELS, GCW_BOARD_FACTIONS, GCW_BOARD_LABELS, getParticipant, type HunterHistoryFilters } from "@/lib/data";
 import { HistoryChart } from "./history-chart";
+import { HunterDossier } from "./hunter-dossier";
 import { HunterActivityChart } from "./hunter-activity-chart";
 import { LocalDateTime } from "./local-date-time";
 import { latestLeaderboardRows } from "@/lib/leaderboard-history";
@@ -21,7 +21,7 @@ const gcwShare = (value: unknown) => {
 const percent = (value: unknown) => value === null || value === undefined ? "—" : `${Math.round(Number(value) * 100)}%`;
 const date = (value: unknown) => value ? <LocalDateTime value={value as string | Date} kind="date"/> : "—";
 
-export async function Dossier({ id, type }: { id: string; type: "player" | "guild" | "city" }) {
+export async function Dossier({ id, type, historyFilters = {} }: { id: string; type: "player" | "guild" | "city"; historyFilters?: HunterHistoryFilters }) {
   const data = await loadParticipant(id, type);
   if (!data) notFound();
   const latest = latestLeaderboardRows(data.history);
@@ -98,15 +98,12 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
   const gcwBadges = gcwBadgeItems.length === 0 ? null : <div className="badge-row">{gcwBadgeItems.map((item) => item.href
     ? <Link key={item.key} className={`badge ${item.className}`} href={item.href} title={item.title} aria-label={item.title}>{item.label}</Link>
     : <span key={item.key} className={`badge ${item.className}`} title={item.title} aria-label={item.title}>{item.label}</span>)}</div>;
-  const noun = type === "player" ? "Hunter" : type === "guild" ? "Guild" : "City";
-  const hunter = data.hunterSummary;
-  const target = data.targetSummary;
+  // Hunters get a denser layout with the full opponent ledger and paginated history.
+  if (type === "player") return <HunterDossier data={data} latest={latest} gcwBadges={gcwBadges} historyFilters={historyFilters}/>;
+  const noun = type === "guild" ? "Guild" : "City";
   const guild = data.guildCompetition;
-  const rivalries = data.rivalries.filter((row) => Number(row.encounters) >= 2).slice(0, 10);
 
-  const associationNotice = type === "player"
-    ? "Encounter statistics use a case-insensitive exact-name match because the public encounter endpoint supplies no character IDs. They describe only the locally archived window, not the hunter’s lifetime career."
-    : type === "guild"
+  const associationNotice = type === "guild"
       ? "Event statistics are derived by matching event names to tracked players and their latest guild abbreviation. The event source itself supplies no guild relationship or historical roster."
       : "The public encounter endpoint provides no city relationship, so encounters cannot be attributed to this entity.";
 
@@ -120,20 +117,6 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
       </div>
     </div>
 
-    {type === "player" && hunter && <>
-      <section className="section"><div className="section-head"><div><span className="kicker">Hunter role · exact-name association</span><h2>Archived encounter record</h2></div><Link href={`/encounters?q=${encodeURIComponent(data.participant.current_name)}`}>Filter event log →</Link></div>
-        <dl className="metrics profile-metrics">
-          <div className="metric record-metric"><dt>Record</dt><dd><span className="health-good">{integer(hunter.wins)}W</span> <span className="health-bad">{integer(hunter.losses)}L</span></dd><small>{integer(hunter.encounters)} contracts attempted</small></div>
-          <div className="metric"><dt>Win rate</dt><dd>{percent(hunter.win_rate)}</dd><small>claims ÷ hunter-role encounters</small></div>
-          <div className="metric"><dt>Credits claimed</dt><dd>{integer(hunter.credits)}</dd><small>{hunter.average_bounty === null ? "no successful claims" : `${integer(Math.round(Number(hunter.average_bounty)))} average`}</small></div>
-          <div className="metric"><dt>Highest bounty</dt><dd>{hunter.highest_bounty === null ? "—" : integer(hunter.highest_bounty)}</dd><small>largest archived payout</small></div>
-          <div className="metric"><dt>Unique targets</dt><dd>{integer(hunter.unique_targets)}</dd><small>exact target names</small></div>
-          <div className="metric"><dt>Active days</dt><dd>{integer(hunter.active_days)}</dd><small>{date(hunter.first_active_at)} – {date(hunter.last_active_at)}</small></div>
-        </dl>
-      </section>
-      <section className="section"><div className="panel"><div className="panel-header"><h3>When targeted</h3><span className="chip">Separate role</span></div><div className="target-summary"><div><span>Targeted</span><b>{integer(target?.encounters)}</b></div><div><span>Survived</span><b className="health-good">{integer(target?.survived)}</b></div><div><span>Killed</span><b className="health-bad">{integer(target?.killed)}</b></div><div><span>Survival rate</span><b>{percent(target?.survival_rate)}</b></div></div><p className="stat-definition">A failed contract counts as a target survival. These events are deliberately excluded from the hunter-role win rate.</p></div></section>
-    </>}
-
     {type === "guild" && guild && <>
       <section className="section"><div className="section-head"><div><span className="kicker">Current roster · derived event association</span><h2>Guild competition record</h2></div><Link href="/guilds">All guilds →</Link></div><dl className="metrics profile-metrics">
         <div className="metric record-metric"><dt>Record</dt><dd><span className="health-good">{integer(guild.summary?.wins)}W</span> <span className="health-bad">{integer(guild.summary?.losses)}L</span></dd><small>{integer(guild.summary?.encounters)} member contracts</small></div><div className="metric"><dt>Win rate</dt><dd>{percent(guild.summary?.win_rate)}</dd><small>current-roster hunter activity</small></div><div className="metric"><dt>Credits claimed</dt><dd>{integer(guild.summary?.credits)}</dd><small>successful member contracts</small></div><div className="metric"><dt>Tracked roster</dt><dd>{integer(guild.summary?.roster_size)}</dd><small>{integer(guild.summary?.active_hunters)} active hunters</small></div><div className="metric"><dt>Target observations</dt><dd>{integer(guild.summary?.target_observations)}</dd><small>summed unique member targets</small></div><div className="metric"><dt>Last active</dt><dd className="compact-dd">{date(guild.summary?.last_active_at)}</dd><small>latest member hunter event</small></div>
@@ -142,10 +125,8 @@ export async function Dossier({ id, type }: { id: string; type: "player" | "guil
       <section className="section"><div className="panel"><div className="panel-header"><h3>Current tracked roster</h3><span className="chip">{guild.roster.length} hunters</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Hunter</th><th>Archive record</th><th>Encounters</th><th className="numeric">Credits</th><th>Last active</th></tr></thead><tbody>{guild.roster.map((row) => <tr key={row.id}><td data-label="Hunter" className="card-title"><Link className="entity-link" href={`/hunter/${row.id}`}><b>{row.current_name}</b></Link><small>{row.city_name ?? "No current city"}</small></td><td data-label="Archive record"><span className="health-good">{row.wins}W</span> <span className="health-bad">{row.losses}L</span></td><td data-label="Encounters">{row.encounters}</td><td data-label="Credits" className="numeric credits">{integer(row.credits)} cr</td><td data-label="Last active">{date(row.last_active_at)}</td></tr>)}</tbody></table></div></div></section>
     </>}
 
-    <section className="section"><div className="dashboard-grid">{type !== "player" && <div className="panel"><div className="panel-header"><h3>Rank history</h3><span className="chip">Source observations</span></div><HistoryChart rows={data.history}/></div>}<div className="panel"><div className="panel-header"><h3>Contract targets</h3><span className="chip">Hunter role only</span></div>{type === "player" && data.opponents.length ? data.opponents.map((row, index) => <div className="opponent-row" key={row.opponent}><span className="rank">{index + 1}</span><span><b>{row.opponent}</b><small>{integer(row.encounters)} contracts · {percent(row.win_rate)} claim rate</small></span><span className="record"><b className="health-good">{row.wins}W</b> <b className="health-bad">{row.losses}L</b></span></div>) : <div className="empty">{type === "player" ? "No hunter-role matchups are available from the archive." : "Contract targets are available only for hunter profiles."}</div>}</div>
-      {type === "player" && <div className="panel"><div className="panel-header"><h3>Rivalry files</h3><span className="chip">Both encounter roles</span></div>{rivalries.length ? rivalries.map((row, index) => <div className="opponent-row" key={row.opponent_key}><span className="rank">{index + 1}</span><span><b><Link className="entity-link" href={`/rivalry/${data.participant.id}/${encodeURIComponent(row.opponent)}`}>{row.opponent}</Link></b><small>{integer(row.encounters)} encounters · {integer(row.revenge_kills)} revenge</small></span><span className="record"><b className="health-good">{row.wins}W</b> <b className="health-bad">{row.losses}L</b></span></div>) : <div className="empty">No repeat opponents are archived yet.</div>}</div>}
+    <section className="section"><div className="dashboard-grid"><div className="panel"><div className="panel-header"><h3>Rank history</h3><span className="chip">Source observations</span></div><HistoryChart rows={data.history}/></div><div className="panel"><div className="panel-header"><h3>Contract targets</h3><span className="chip">Hunter role only</span></div><div className="empty">Contract targets are available only for hunter profiles.</div></div>
     </div></section>
-    {type === "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Recent history</h3><span className="chip">Both encounter roles</span></div><EncounterList rows={data.encounters.slice(0, 25)}/></div></section>}
-    {type !== "player" && <section className="section"><div className="panel"><div className="panel-header"><h3>Leaderboard observation history</h3><span className="chip">{data.history.length} rows</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Observed</th><th>Board</th><th>Period</th><th>Rank</th><th className="numeric">Raw score</th></tr></thead><tbody>{data.history.map((row, index) => <tr key={`${row.leaderboard_id}-${row.source_fetched_at}-${index}`}><td data-label="Observed"><LocalDateTime value={row.source_fetched_at}/></td><td data-label="Board" className="card-title">{BOARD_LABELS[row.leaderboard_id] ?? row.leaderboard_id}</td><td data-label="Period">{date(row.starts_at)} – {date(row.ends_at)}</td><td data-label="Rank">#{row.rank}</td><td data-label="Raw score" className="numeric">{integer(row.score_raw)}</td></tr>)}</tbody></table></div></div></section>}
+    <section className="section"><div className="panel"><div className="panel-header"><h3>Leaderboard observation history</h3><span className="chip">{data.history.length} rows</span></div><div className="data-scroll"><table className="data-table mobile-cards"><thead><tr><th>Observed</th><th>Board</th><th>Period</th><th>Rank</th><th className="numeric">Raw score</th></tr></thead><tbody>{data.history.map((row, index) => <tr key={`${row.leaderboard_id}-${row.source_fetched_at}-${index}`}><td data-label="Observed"><LocalDateTime value={row.source_fetched_at}/></td><td data-label="Board" className="card-title">{BOARD_LABELS[row.leaderboard_id] ?? row.leaderboard_id}</td><td data-label="Period">{date(row.starts_at)} – {date(row.ends_at)}</td><td data-label="Rank">#{row.rank}</td><td data-label="Raw score" className="numeric">{integer(row.score_raw)}</td></tr>)}</tbody></table></div></div></section>
   </div>;
 }

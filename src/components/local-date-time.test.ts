@@ -9,6 +9,11 @@ describe("local date/time formatting", () => {
     expect(formatZonedDateTime(instant, "dateTime", "Europe/London")).toContain("Aug 13, 2026");
   });
 
+  it("joins date and time with a fixed separator so server and browser ICU agree", () => {
+    expect(formatZonedDateTime(instant, "dateTime", "UTC")).toBe("Aug 13, 2026, 01:30 AM UTC");
+    expect(formatZonedDateTime(instant, "compact", "UTC")).toBe("Aug 13, 01:30 AM UTC");
+  });
+
   it("uses the requested timezone for date-only calendar boundaries", () => {
     expect(formatZonedDateTime(instant, "date", "America/Halifax")).toBe("Aug 12, 2026");
     expect(formatZonedDateTime(instant, "date", "Europe/London")).toBe("Aug 13, 2026");

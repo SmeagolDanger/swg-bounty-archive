@@ -5,6 +5,7 @@ import { runIngestion } from "../src/lib/ingestion/pipeline";
 import { publishPendingDiscordEncounters } from "../src/lib/discord/encounter-feed";
 import { maybePostWeeklyReport } from "../src/lib/discord/weekly-post";
 import { axiomConfigured, flushAxiom } from "../src/lib/observability/axiom";
+import { maybeCheckDiskSpace } from "../src/lib/observability/disk";
 import { errorLogContext, log } from "../src/lib/observability/logger";
 
 // 310 rather than 300: SWG Legends serves the bounty feed from a 300 s
@@ -73,6 +74,7 @@ try {
         // a Discord problem there cannot surface as an ingestion failure.
         await publishPendingDiscordEncounters({ archivedBefore: new Date(cycleStartedAt) });
         await maybePostWeeklyReport();
+        await maybeCheckDiskSpace();
       } catch (error) {
         await heartbeat("error", undefined, "FAILED").catch(() => undefined);
         log.error("source_processing_failed", {

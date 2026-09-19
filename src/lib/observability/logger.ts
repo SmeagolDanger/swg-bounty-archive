@@ -25,6 +25,8 @@ export type ObservabilityEvent =
   | "discord_bounty_bootstrapped"
   | "capture_heartbeat_failed"
   | "capture_replay_complete"
+  | "discord_feed_backlog"
+  | "host_disk_low"
   | "discord_interaction_answered"
   | "discord_interaction_failed"
   | "discord_interaction_rejected"
@@ -108,6 +110,10 @@ function alertName(level: LogLevel, event: ObservabilityEvent, context: Record<s
       return "discord_bot_error";
     case "capture_heartbeat_failed":
       return "standby_unreachable";
+    case "discord_feed_backlog":
+      return "discord_feed_backlog";
+    case "host_disk_low":
+      return "host_disk_low";
     case "capture_replay_complete":
       return status === "failed" ? "replay_failed" : undefined;
     default:
@@ -126,6 +132,8 @@ export function classifyAlert(level: LogLevel, event: ObservabilityEvent, contex
     str(context.reason) ? `reason=${str(context.reason)}` : Array.isArray(context.reason) ? `reason=${(context.reason as unknown[]).join(",")}` : undefined,
     num(context.http_status) !== undefined ? `http=${num(context.http_status)}` : undefined,
     num(context.failed_sources) ? `failed_sources=${num(context.failed_sources)}` : undefined,
+    num(context.pending) !== undefined ? `pending=${num(context.pending)}` : undefined,
+    num(context.free_gb) !== undefined ? `free=${num(context.free_gb)}GB` : undefined,
     message ? message.replace(/\s+/g, " ").slice(0, 160) : undefined,
   ].filter(Boolean);
   return { alert, alert_summary: parts.join(" · ") };

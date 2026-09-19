@@ -15,6 +15,10 @@ export const ENCOUNTER_FEED_COLORS = { KILL: 0x57f287, FAILED: 0xed4245 } as con
 export const ENCOUNTER_FEED_BATCH_SIZE = 25;
 export const ENCOUNTER_FEED_SPACING_MS = 500;
 export const ENCOUNTER_FEED_TIMEOUT_MS = 10_000;
+// An encounter still pending this long after it was archived means a webhook
+// is failing every cycle (or Discord is down); alert at most hourly per webhook.
+export const ENCOUNTER_FEED_BACKLOG_AGE_MS = 60 * 60 * 1000;
+export const ENCOUNTER_FEED_BACKLOG_ALERT_INTERVAL_MS = 60 * 60 * 1000;
 // Session-level advisory lock: two overlapping publishers (for example the old
 // and new worker during a rolling restart) must not announce the same row.
 const LOCK_SQL = "hashtext('swg-bounty-archive-discord-encounter-feed')";
@@ -48,6 +52,8 @@ export interface EncounterFeedDeps {
   fetchImpl?: typeof fetch;
   batchSize?: number;
   sleep?: (ms: number) => Promise<void>;
+  now?: () => Date;
+  backlogAlerts?: Map<string, number>;   // webhook key → last backlog alert time (ms)
 }
 
 export interface EncounterFeedResult {
@@ -153,6 +159,41 @@ export async function findPendingEncounters(client: Queryable, key: string, limi
   return result.rows;
 }
 
+export interface FeedBacklog { pending: number; oldest_pending_at: Date | null }
+
+export async function findBacklog(client: Queryable, key: string): Promise<FeedBacklog> {
+  const result = await client.query<{ pending: number; oldest_pending_at: Date | string | null }>(
+    `SELECT count(*)::int AS pending, min(e.first_observed_at) AS oldest_pending_at
+     FROM bounty_encounters e
+     WHERE NOT EXISTS (SELECT 1 FROM discord_encounter_posts p WHERE p.encounter_id = e.id AND p.webhook_key = $1)`,
+    [key],
+  );
+  const row = result.rows[0];
+  return { pending: row?.pending ?? 0, oldest_pending_at: row?.oldest_pending_at ? new Date(row.oldest_pending_at) : null };
+}
+
+const backlogAlertTimes = new Map<string, number>();
+
+// Logs discord_feed_backlog (an alert) when this webhook has had an encounter
+// waiting longer than ENCOUNTER_FEED_BACKLOG_AGE_MS, at most once per hour.
+export async function reportBacklog(client: Queryable, webhook: FeedWebhook, now: Date, alerts: Map<string, number> = backlogAlertTimes): Promise<FeedBacklog> {
+  const backlog = await findBacklog(client, webhook.key);
+  const stale = backlog.oldest_pending_at !== null && now.getTime() - backlog.oldest_pending_at.getTime() > ENCOUNTER_FEED_BACKLOG_AGE_MS;
+  if (backlog.pending === 0 || !stale) {
+    alerts.delete(webhook.key);
+    return backlog;
+  }
+  const last = alerts.get(webhook.key) ?? 0;
+  if (now.getTime() - last >= ENCOUNTER_FEED_BACKLOG_ALERT_INTERVAL_MS) {
+    alerts.set(webhook.key, now.getTime());
+    log.warn("discord_feed_backlog", {
+      source: "discord_bounty_feed", status: "failed", reason: "delivery_backlog", webhook_key: webhook.key,
+      pending: backlog.pending, oldest_pending_at: backlog.oldest_pending_at?.toISOString(),
+    });
+  }
+  return backlog;
+}
+
 export async function markEncounterPosted(client: Queryable, encounterId: string, key: string): Promise<void> {
   await client.query(
     "INSERT INTO discord_encounter_posts(encounter_id, webhook_key) VALUES($1,$2) ON CONFLICT (encounter_id, webhook_key) DO NOTHING",
@@ -247,6 +288,7 @@ export async function publishPendingDiscordEncounters(deps: EncounterFeedDeps = 
       result.posted += outcome.posted;
       result.remaining += outcome.remaining;
       if (outcome.failed) result.reason = "delivery_failed";
+      await reportBacklog(client, webhook, deps.now?.() ?? new Date(), deps.backlogAlerts);
     }
     return result;
   } catch (error) {

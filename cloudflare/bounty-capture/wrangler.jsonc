@@ -14,5 +14,5 @@
     "STALE_AFTER_SECONDS": "360"
   },
   "observability": { "enabled": true }
-  // Secrets (wrangler secret put): CAPTURE_TOKEN
+  // Secrets (wrangler secret put): CAPTURE_TOKEN (required), ALERT_WEBHOOK_URL (optional Discord webhook for takeover/recovery alerts)
 }

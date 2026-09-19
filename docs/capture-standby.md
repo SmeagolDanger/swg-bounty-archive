@@ -72,6 +72,24 @@ deduplicated by fingerprint, and re-running the same range inserts nothing
 new. The run appears in the ingestion console as a `BACKFILL` run whose raw
 rows carry `parameters.capture` with the R2 key.
 
+## Alerts
+
+Set the optional `ALERT_WEBHOOK_URL` secret on the Worker
+(`npx wrangler secret put ALERT_WEBHOOK_URL` from `cloudflare/bounty-capture/`)
+to a Discord webhook and the standby posts:
+
+- a red embed once when it takes over (the primary has been silent for
+  `STALE_AFTER_SECONDS`), with the last heartbeat time;
+- a green embed once when heartbeats resume, with the number of captures
+  stored and the exact `npm run ingest:replay -- --since …` command to run;
+- an amber embed at most once an hour while its own captures fail during a
+  takeover (for example if the source blocks the request), since that means
+  data is being lost.
+
+This is the outside-in alert for the collector: it does not depend on the
+VPS, Axiom, or anything else on the primary side. `GET /status` shows
+`takeoverAt` and whether alerts are configured.
+
 ## Limits and behaviour
 
 - Takeover latency: up to `STALE_AFTER_SECONDS` plus one cron minute after

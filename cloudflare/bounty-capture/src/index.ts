@@ -1,7 +1,7 @@
 import {
-  CAPTURE_PREFIX, HEARTBEAT_KEY, LATEST_KEY,
-  captureKey, captureTimeFromKey, decideStandbyCapture, looksLikeBountyPayload, parseDate, sha256Hex, tokenMatches,
-  type Heartbeat, type LatestState,
+  ALERT_KEY, CAPTURE_PREFIX, EMPTY_ALERT_STATE, HEARTBEAT_KEY, LATEST_KEY,
+  captureKey, captureTimeFromKey, decideStandbyCapture, looksLikeBountyPayload, nextAlertState, parseDate, sha256Hex, tokenMatches,
+  type AlertEmbed, type AlertState, type Heartbeat, type LatestState,
 } from "./capture";
 
 // Cold standby for the SWG Legends bounty feed. The primary collector (the
@@ -17,6 +17,7 @@ export interface Env {
   SWG_BASE_URL: string;
   STALE_AFTER_SECONDS?: string;
   CAPTURE_TOKEN: string;
+  ALERT_WEBHOOK_URL?: string;   // optional Discord webhook for takeover/recovery/failure notices
 }
 
 interface CaptureOutcome { stored: boolean; key: string | null; reason: string; fetchedAt?: string | null }
@@ -80,6 +81,20 @@ async function standbyStatus(env: Env, now: Date) {
   return { heartbeatAt, lastCheckedAt, latest, decision };
 }
 
+async function postAlerts(webhook: string, embeds: AlertEmbed[]): Promise<void> {
+  try {
+    const response = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowed_mentions: { parse: [] }, embeds }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) console.log(JSON.stringify({ event: "standby_alert_failed", http_status: response.status }));
+  } catch (error) {
+    console.log(JSON.stringify({ event: "standby_alert_failed", error: error instanceof Error ? error.message : String(error) }));
+  }
+}
+
 function authorized(request: Request, env: Env): boolean {
   const header = request.headers.get("Authorization") ?? "";
   const presented = header.startsWith("Bearer ") ? header.slice(7).trim() : null;
@@ -109,12 +124,21 @@ async function listCaptures(env: Env, since: Date | null, until: Date | null) {
 
 export default {
   async scheduled(_controller: ScheduledController, env: Env, context: ExecutionContext): Promise<void> {
-    const now = new Date();
-    const status = await standbyStatus(env, now);
-    if (!status.decision.capture) return;
     context.waitUntil((async () => {
-      const outcome = await capture(env, now, "cron");
-      console.log(JSON.stringify({ event: "standby_capture", standby_reason: status.decision.reason, ...outcome, heartbeatAt: status.heartbeatAt?.toISOString() ?? null }));
+      const now = new Date();
+      const status = await standbyStatus(env, now);
+      const previous = (await readJson<AlertState>(env.CAPTURES, ALERT_KEY)) ?? EMPTY_ALERT_STATE;
+      let outcome: CaptureOutcome | null = null;
+      if (status.decision.capture) {
+        outcome = await capture(env, now, "cron");
+        console.log(JSON.stringify({ event: "standby_capture", standby_reason: status.decision.reason, ...outcome, heartbeatAt: status.heartbeatAt?.toISOString() ?? null }));
+      }
+      const { state, messages } = nextAlertState({ state: previous, decision: status.decision, outcome, heartbeatAt: status.heartbeatAt, now });
+      if (JSON.stringify(state) !== JSON.stringify(previous)) await env.CAPTURES.put(ALERT_KEY, JSON.stringify(state));
+      if (messages.length > 0) {
+        console.log(JSON.stringify({ event: "standby_alert", titles: messages.map((message) => message.title), notified: Boolean(env.ALERT_WEBHOOK_URL) }));
+        if (env.ALERT_WEBHOOK_URL) await postAlerts(env.ALERT_WEBHOOK_URL, messages);
+      }
     })());
   },
 
@@ -135,7 +159,10 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/status") {
       const status = await standbyStatus(env, now);
+      const alerts = (await readJson<AlertState>(env.CAPTURES, ALERT_KEY)) ?? EMPTY_ALERT_STATE;
       return json({
+        takeoverAt: alerts.takeoverAt,
+        alertsConfigured: Boolean(env.ALERT_WEBHOOK_URL),
         now: now.toISOString(),
         heartbeatAt: status.heartbeatAt?.toISOString() ?? null,
         heartbeatAgeSeconds: status.heartbeatAt ? Math.round((now.getTime() - status.heartbeatAt.getTime()) / 1000) : null,

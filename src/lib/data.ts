@@ -676,14 +676,71 @@ async function getGuildProfileData(guildId: string, abbreviation: string | null)
   return { summary: summary.rows[0], roster: roster.rows, rivals: rivals.rows, activity: activity.rows };
 }
 
-async function getHunterRivalries(hunterName: string) {
-  const result = await pool.query(`WITH matches AS (
+export interface HunterOpponentRow {
+  opponent_key: string;
+  opponent: string;
+  encounters: number;
+  wins: number;
+  losses: number;
+  claims: number;
+  survivals: number;
+  /** Contracts this hunter took against the opponent. */
+  contracts_taken: number;
+  /** Contracts the opponent took against this hunter. */
+  contracts_against: number;
+  credits: number;
+  /** Bounties the opponent collected on this hunter. */
+  credits_lost: number;
+  first_event_at: Date | string;
+  last_event_at: Date | string;
+  win_rate: number | null;
+  revenge_kills: number;
+  participant_id: string | null;
+  guild_abbreviation: string | null;
+}
+
+export const HISTORY_PAGE_SIZES = [50, 100, 250] as const;
+
+export interface HunterHistoryFilters {
+  role?: "hunter" | "target";
+  outcome?: "KILL" | "FAILED";
+  page?: number;
+  pageSize?: number;
+}
+
+/** Every archived encounter involving one hunter name, newest first, in either role. */
+export async function getHunterHistory(hunterName: string, filters: HunterHistoryFilters = {}) {
+  const values: unknown[] = [hunterName];
+  const conditions = [filters.role === "hunter" ? "lower(be.hunter_name)=lower($1)"
+    : filters.role === "target" ? "lower(be.target_name)=lower($1)"
+    : "(lower(be.hunter_name)=lower($1) OR lower(be.target_name)=lower($1))"];
+  if (filters.outcome === "KILL" || filters.outcome === "FAILED") { values.push(filters.outcome); conditions.push(`be.outcome=$${values.length}`); }
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const pageSize = (HISTORY_PAGE_SIZES as readonly number[]).includes(filters.pageSize ?? 0) ? Number(filters.pageSize) : HISTORY_PAGE_SIZES[0];
+  const page = Math.max(1, filters.page ?? 1);
+  const count = await pool.query(`SELECT count(*)::int AS count FROM bounty_encounters be ${where}`, [...values]);
+  values.push(pageSize, (page - 1) * pageSize);
+  const rows = await pool.query(`WITH page_rows AS MATERIALIZED (
+      SELECT id,event_at,outcome,hunter_name,target_name,credits FROM bounty_encounters be ${where}
+      ORDER BY be.event_at DESC,be.id DESC LIMIT $${values.length - 1} OFFSET $${values.length}
+    )
+    SELECT be.id,be.event_at,be.outcome,be.hunter_name,be.target_name,be.credits::float8,
+      hunter.id AS hunter_participant_id,target.id AS target_participant_id
+    FROM page_rows be
+    LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.hunter_name) ORDER BY last_seen_at DESC LIMIT 1) hunter ON true
+    LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=lower(be.target_name) ORDER BY last_seen_at DESC LIMIT 1) target ON true
+    ORDER BY be.event_at DESC,be.id DESC`, values);
+  return { rows: rows.rows, total: count.rows[0].count as number, page, pageSize };
+}
+
+async function getHunterRivalries(hunterName: string): Promise<HunterOpponentRow[]> {
+  const result = await pool.query<HunterOpponentRow>(`WITH matches AS (
       SELECT be.*,
         CASE WHEN lower(be.hunter_name)=lower($1) THEN be.target_name ELSE be.hunter_name END AS opponent,
         CASE WHEN (be.outcome='KILL' AND lower(be.hunter_name)=lower($1)) OR (be.outcome='FAILED' AND lower(be.target_name)=lower($1)) THEN 1 ELSE 0 END AS player_won,
         CASE WHEN be.outcome='KILL' AND lower(be.hunter_name)=lower($1) THEN 1 ELSE 0 END AS player_claim,
         CASE WHEN be.outcome='FAILED' AND lower(be.target_name)=lower($1) THEN 1 ELSE 0 END AS player_survival
-      FROM bounty_encounters be WHERE lower(be.hunter_name)=lower($1) OR lower(be.target_name)=lower($1)
+      FROM bounty_encounters be WHERE (lower(be.hunter_name)=lower($1) OR lower(be.target_name)=lower($1)) AND lower(be.hunter_name)<>lower(be.target_name)
     ), kill_sequence AS (
       SELECT lower(opponent) AS opponent_key,lower(hunter_name) AS killer_key,lower(target_name) AS victim_key,
         lag(lower(hunter_name)) OVER(PARTITION BY lower(opponent) ORDER BY event_at,id) AS previous_killer_key
@@ -694,13 +751,17 @@ async function getHunterRivalries(hunterName: string) {
     ), aggregates AS (
       SELECT lower(opponent) AS opponent_key,min(opponent) AS opponent,count(*)::int AS encounters,sum(player_won)::int AS wins,
         (count(*)-sum(player_won))::int AS losses,sum(player_claim)::int AS claims,sum(player_survival)::int AS survivals,
-        coalesce(sum(credits) FILTER(WHERE player_claim=1),0)::float8 AS credits,min(event_at) AS first_event_at,max(event_at) AS last_event_at
+        count(*) FILTER(WHERE lower(hunter_name)=lower($1))::int AS contracts_taken,
+        count(*) FILTER(WHERE lower(target_name)=lower($1))::int AS contracts_against,
+        coalesce(sum(credits) FILTER(WHERE player_claim=1),0)::float8 AS credits,
+        coalesce(sum(credits) FILTER(WHERE outcome='KILL' AND lower(target_name)=lower($1)),0)::float8 AS credits_lost,
+        min(event_at) AS first_event_at,max(event_at) AS last_event_at
       FROM matches GROUP BY lower(opponent)
     )
     SELECT a.*,CASE WHEN a.encounters>0 THEN a.wins::float8/a.encounters ELSE NULL END AS win_rate,
-      coalesce(r.revenge_kills,0)::int AS revenge_kills,p.id AS participant_id
+      coalesce(r.revenge_kills,0)::int AS revenge_kills,p.id AS participant_id,p.guild_abbreviation
     FROM aggregates a LEFT JOIN revenge r ON r.opponent_key=a.opponent_key
-    LEFT JOIN LATERAL (SELECT id FROM participants WHERE participant_type='player' AND lower(current_name)=a.opponent_key ORDER BY last_seen_at DESC LIMIT 1) p ON true
+    LEFT JOIN LATERAL (SELECT id,nullif(guild_abbreviation,'') AS guild_abbreviation FROM participants WHERE participant_type='player' AND lower(current_name)=a.opponent_key ORDER BY last_seen_at DESC LIMIT 1) p ON true
     ORDER BY a.encounters DESC,a.losses DESC,a.opponent`, [hunterName]);
   return result.rows;
 }
